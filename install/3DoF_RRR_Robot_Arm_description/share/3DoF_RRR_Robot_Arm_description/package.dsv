@@ -1,0 +1,8 @@
+source;share/3DoF_RRR_Robot_Arm_description/hook/cmake_prefix_path.ps1
+source;share/3DoF_RRR_Robot_Arm_description/hook/cmake_prefix_path.dsv
+source;share/3DoF_RRR_Robot_Arm_description/hook/cmake_prefix_path.sh
+source;share/3DoF_RRR_Robot_Arm_description/local_setup.bash
+source;share/3DoF_RRR_Robot_Arm_description/local_setup.dsv
+source;share/3DoF_RRR_Robot_Arm_description/local_setup.ps1
+source;share/3DoF_RRR_Robot_Arm_description/local_setup.sh
+source;share/3DoF_RRR_Robot_Arm_description/local_setup.zsh
