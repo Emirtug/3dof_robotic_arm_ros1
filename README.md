@@ -151,6 +151,7 @@ MoveIt configuration package for 3DoF RRR robot arm:
 
 - **Ömer Hamza ACAR** - omerhamza.acar20@gmail.com
 - **Ömer Faruk ÜNAL** - ofu.951@gmail.com
+- **Şafak YAŞLAK** - safak.yaslakk@gmail.com
 
 
 ---
