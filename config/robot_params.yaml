@@ -1,0 +1,61 @@
+# Robot Parameters
+# Physical parameters for 3DoF RRR Robot Arm
+# Used by: Gazebo, Real Robot, Controllers
+
+robot:
+  name: 3dof_rrr_arm
+  dof: 3
+
+# Joint Definitions
+joints:
+  joint1:
+    name: joint1
+    type: revolute
+    axis: [0, 0, 1]
+    limits:
+      lower: -2.268    # -130 deg
+      upper: 2.268     # 130 deg
+      velocity: 1.0    # rad/s
+      effort: 10.0     # Nm
+
+  joint2:
+    name: joint2
+    type: revolute
+    axis: [-0.6534, -0.5970, 0.0]
+    limits:
+      lower: 0.0
+      upper: 1.57      # 90 deg
+      velocity: 1.0
+      effort: 10.0
+
+  joint3:
+    name: joint3
+    type: revolute
+    axis: [0.6534, 0.5970, 0.0]
+    limits:
+      lower: -1.57     # -90 deg
+      upper: 1.57      # 90 deg
+      velocity: 1.0
+      effort: 10.0
+
+# Hardware (OpenCM9.04 + AX-12A)
+hardware:
+  board: OpenCM9.04
+  servos:
+    type: AX-12A
+    protocol: 1.0
+    baudrate: 1000000
+    
+  motor_ids:
+    joint1: 1
+    joint2: 2
+    joint3: 3
+
+  # AX-12A specific
+  position_range: [0, 1023]      # 0-300 degrees
+  center_position: 512
+  
+# Control rates
+control:
+  rate: 50                       # Hz
+  timeout: 1.0                   # seconds

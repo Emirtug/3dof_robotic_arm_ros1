@@ -1,0 +1,39 @@
+# Position Controller Configuration
+# Works with: Gazebo, Real Robot (OpenCM9.04 + AX-12A)
+# Control Type: Position with PID
+
+controller_type: position
+
+# Joint State Publisher
+joint_state_controller:
+  type: joint_state_controller/JointStateController
+  publish_rate: 50
+
+# Position Controller (JointTrajectoryController)
+arm_controller:
+  type: position_controllers/JointTrajectoryController
+  joints:
+    - joint1
+    - joint2
+    - joint3
+  constraints:
+    goal_time: 0.6
+    stopped_velocity_tolerance: 0.05
+  stop_trajectory_duration: 0.5
+  state_publish_rate: 50
+  action_monitor_rate: 20
+
+# PID Gains for each joint
+pid_gains:
+  joint1:
+    p: 100.0
+    i: 0.01
+    d: 10.0
+  joint2:
+    p: 100.0
+    i: 0.01
+    d: 10.0
+  joint3:
+    p: 100.0
+    i: 0.01
+    d: 10.0
