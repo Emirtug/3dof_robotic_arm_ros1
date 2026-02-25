@@ -17,10 +17,8 @@ find_package(catkin REQUIRED COMPONENTS
   joint_state_publisher
   tf
   tf2_ros
-  moveit_core
-  moveit_ros_planning
-  moveit_ros_planning_interface
-  moveit_ros_move_group
+  gazebo_ros
+  controller_manager
 )
 
 catkin_package(
@@ -40,10 +38,8 @@ catkin_package(
     joint_state_publisher
     tf
     tf2_ros
-    moveit_core
-    moveit_ros_planning
-    moveit_ros_planning_interface
-    moveit_ros_move_group
+    gazebo_ros
+    controller_manager
 )
 
 include_directories(
@@ -51,25 +47,28 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-catkin_install_python(PROGRAMS
-  scripts/moveit_direct_sync.py
-  scripts/kinematic_3r_location.py
-  scripts/fake_joint_trajectory_action_server.py
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
-
+# Install launch files
 install(DIRECTORY launch/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
 )
 
+# Install config files
 install(DIRECTORY config/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
 )
 
+# Install urdf files
 install(DIRECTORY urdf/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/urdf
 )
 
+# Install mesh files
 install(DIRECTORY meshes/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/meshes
+)
+
+# Install scripts
+catkin_install_python(PROGRAMS
+  scripts/basic_move.py
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/scripts
 )

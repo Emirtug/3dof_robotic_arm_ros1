@@ -3,6 +3,7 @@
 # Control Type: Position with PID
 
 controller_type: position
+hardware_interface: PositionJointInterface
 
 # Joint State Publisher
 joint_state_controller:

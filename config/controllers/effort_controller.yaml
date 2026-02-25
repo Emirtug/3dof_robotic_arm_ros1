@@ -3,6 +3,7 @@
 # Control Type: Torque/Effort with PID
 
 controller_type: effort
+hardware_interface: EffortJointInterface
 
 # Joint State Publisher
 joint_state_controller:
@@ -23,7 +24,7 @@ arm_controller:
   state_publish_rate: 50
   action_monitor_rate: 20
 
-# PID Gains for torque control (need careful tuning!)
+# PID Gains for torque control
 pid_gains:
   joint1:
     p: 500.0

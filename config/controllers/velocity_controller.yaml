@@ -3,6 +3,7 @@
 # Control Type: Velocity with PID
 
 controller_type: velocity
+hardware_interface: VelocityJointInterface
 
 # Joint State Publisher
 joint_state_controller:

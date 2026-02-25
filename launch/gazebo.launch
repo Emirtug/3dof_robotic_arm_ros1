@@ -6,6 +6,14 @@
   <arg name="headless" default="false"/>
   <arg name="debug" default="false"/>
   <arg name="controller" default="position"/>  <!-- position, velocity, effort -->
+
+  <!-- Map controller type to hardware interface -->
+  <arg name="hw_interface" default="PositionJointInterface" 
+       if="$(eval arg('controller') == 'position')"/>
+  <arg name="hw_interface" default="VelocityJointInterface" 
+       if="$(eval arg('controller') == 'velocity')"/>
+  <arg name="hw_interface" default="EffortJointInterface" 
+       if="$(eval arg('controller') == 'effort')"/>
   
   <!-- Launch Gazebo with empty world -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
@@ -16,9 +24,9 @@
     <arg name="headless" value="$(arg headless)"/>
   </include>
 
-  <!-- Load robot description -->
+  <!-- Load robot description from xacro with hardware interface -->
   <param name="robot_description" 
-         textfile="$(find 3dof_rrr_robot_arm)/urdf/3DoF_RRR_Robot_Arm_gazebo.urdf"/>
+         command="$(find xacro)/xacro $(find 3dof_rrr_robot_arm)/urdf/robot.urdf.xacro hw_interface:=$(arg hw_interface)"/>
 
   <!-- Spawn robot in Gazebo -->
   <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" 
