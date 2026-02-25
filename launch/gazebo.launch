@@ -1,0 +1,40 @@
+<launch>
+  <!-- Arguments -->
+  <arg name="paused" default="false"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+  
+  <!-- Launch Gazebo with empty world -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="headless" value="$(arg headless)"/>
+  </include>
+
+  <!-- Load robot description -->
+  <param name="robot_description" 
+         textfile="$(find 3dof_rrr_robot_arm)/urdf/3DoF_RRR_Robot_Arm_gazebo.urdf"/>
+
+  <!-- Spawn robot in Gazebo -->
+  <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" 
+        args="-urdf -model 3dof_rrr_robot_arm -param robot_description -z 0.0"
+        output="screen"/>
+
+  <!-- Load controller configurations -->
+  <rosparam file="$(find 3dof_rrr_robot_arm)/config/gazebo_controllers.yaml" command="load"/>
+
+  <!-- Spawn controllers -->
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" 
+        respawn="false" output="screen"
+        args="joint_state_controller arm_controller"/>
+
+  <!-- Robot State Publisher -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" output="screen">
+    <param name="publish_frequency" value="50"/>
+  </node>
+
+</launch>

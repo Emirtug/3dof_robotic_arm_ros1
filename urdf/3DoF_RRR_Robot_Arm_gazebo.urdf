@@ -1,0 +1,277 @@
+<?xml version="1.0"?>
+<robot name="3DoF_RRR_Robot_Arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Materials -->
+  <material name="Red"><color rgba="1.0 0.0 0.0 1.0"/></material>
+  <material name="Green"><color rgba="0.0 1.0 0.0 1.0"/></material>
+  <material name="Blue"><color rgba="0.0 0.0 1.0 1.0"/></material>
+  <material name="Yellow"><color rgba="1.0 1.0 0.0 1.0"/></material>
+  <material name="Cyan"><color rgba="0.0 1.0 1.0 1.0"/></material>
+  <material name="Magenta"><color rgba="1.0 0.0 1.0 1.0"/></material>
+  <material name="Orange"><color rgba="1.0 0.5 0.0 1.0"/></material>
+  <material name="Lime"><color rgba="0.5 1.0 0.0 1.0"/></material>
+  <material name="Pink"><color rgba="1.0 0.07 0.57 1.0"/></material>
+  <material name="Brown"><color rgba="0.6 0.3 0.0 1.0"/></material>
+  <material name="Grey"><color rgba="0.5 0.5 0.5 1.0"/></material>
+
+  <!-- World link -->
+  <link name="world"/>
+
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0" rpy="3.14159 0 0"/>
+  </joint>
+
+  <!-- Base Link -->
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/base_part2.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Red"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.03" rpy="0 0 0"/>
+      <geometry><box size="0.08 0.08 0.06"/></geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 -0.03" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <!-- Joint 1 -->
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <origin xyz="-0.0625 -0.0627 -0.2274" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/> 
+    <limit lower="-2.268" upper="2.268" effort="10.0" velocity="1.0"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <!-- Link 1 -->
+  <link name="link1">
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2274" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/base_part1.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Blue"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2274" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/base_link.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Green"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2274" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/rulman.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Yellow"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2274" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/servo_1.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Cyan"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.05" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.04" length="0.12"/></geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0.05" rpy="0 0 0"/>
+      <mass value="0.3"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0003"/>
+    </inertial>
+  </link>
+
+  <!-- Joint 2 -->
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0 0 -0.0099" rpy="0 0 0"/>
+    <axis xyz="-0.6534 -0.5970 0.0"/>
+    <limit lower="0" upper="1.57" effort="10.0" velocity="1.0"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <!-- Link 2 -->
+  <link name="link2">
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2383" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/link_1.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Magenta"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2383" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/metal_part_servo2.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Orange"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2383" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/link_2_cover.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Pink"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2383" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/link_sonu_Servo.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Pink"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.05 0.05 0" rpy="0 1.57 0"/>
+      <geometry><cylinder radius="0.025" length="0.15"/></geometry>
+    </collision>
+    <inertial>
+      <origin xyz="-0.05 0.05 0" rpy="0 0 0"/>
+      <mass value="0.2"/>
+      <inertia ixx="0.0003" ixy="0" ixz="0" iyy="0.0003" iyz="0" izz="0.0002"/>
+    </inertial>
+  </link>
+
+  <!-- Joint 3 -->
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <origin xyz="-0.1322 0.1533 -0.0337" rpy="0 0 0"/> 
+    <axis xyz="-0.6534 -0.5570 0"/>
+    <limit lower="0" upper="1.57" effort="10.0" velocity="1.0"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <!-- Link 3 -->
+  <link name="link3">
+    <visual> 
+      <origin xyz="0.1947 -0.0906 0.2627" rpy="0 0 0"/> 
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/servo_2.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Lime"/>
+    </visual>
+    <collision>
+      <origin xyz="0.05 -0.03 0" rpy="0 0 0"/>
+      <geometry><box size="0.06 0.04 0.04"/></geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.05 -0.03 0" rpy="0 0 0"/>
+      <mass value="0.15"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <!-- Gripper Joint -->
+  <joint name="gripper_joint" type="fixed">
+    <parent link="link3"/>
+    <child link="gripper_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Gripper Link -->
+  <link name="gripper_link">
+    <visual> 
+      <origin xyz="0.1947 -0.0906 0.2627" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/gripper.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Brown"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.1947 -0.0906 0.2627" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/kapak_new.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.08" rpy="0 0 0"/>
+      <geometry><box size="0.04 0.06 0.1"/></geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0.08" rpy="0 0 0"/>
+      <mass value="0.1"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.00005"/>
+    </inertial>
+  </link>
+
+  <!-- Tool Tip Joint -->
+  <joint name="tool_tip_joint" type="fixed">
+    <parent link="gripper_link"/>
+    <child link="tool_tip"/>
+    <origin xyz="-0.05 0.06 0.2" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Tool Tip Link -->
+  <link name="tool_tip">
+    <visual>
+      <geometry><sphere radius="0.012"/></geometry>
+      <material name="Green"/>
+    </visual>
+    <collision>
+      <geometry><sphere radius="0.012"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="0.000001" ixy="0" ixz="0" iyy="0.000001" iyz="0" izz="0.000001"/>
+    </inertial>
+  </link>
+
+  <!-- ==================== GAZEBO SPECIFIC ==================== -->
+  
+  <!-- Gazebo Colors -->
+  <gazebo reference="base_link">
+    <material>Gazebo/Red</material>
+  </gazebo>
+  <gazebo reference="link1">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+  <gazebo reference="link2">
+    <material>Gazebo/Purple</material>
+  </gazebo>
+  <gazebo reference="link3">
+    <material>Gazebo/Green</material>
+  </gazebo>
+  <gazebo reference="gripper_link">
+    <material>Gazebo/Orange</material>
+  </gazebo>
+  <gazebo reference="tool_tip">
+    <material>Gazebo/Green</material>
+  </gazebo>
+
+  <!-- ros_control plugin -->
+  <gazebo>
+    <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+      <robotNamespace>/</robotNamespace>
+      <robotSimType>gazebo_ros_control/DefaultRobotHWSim</robotSimType>
+      <legacyModeNS>true</legacyModeNS>
+    </plugin>
+  </gazebo>
+
+  <!-- Transmission for Joint 1 -->
+  <transmission name="trans_joint1">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="joint1">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor_joint1">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+  <!-- Transmission for Joint 2 -->
+  <transmission name="trans_joint2">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="joint2">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor_joint2">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+  <!-- Transmission for Joint 3 -->
+  <transmission name="trans_joint3">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="joint3">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor_joint3">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+</robot>

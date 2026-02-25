@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Real Robot Launch File -->
+  <!-- 3DoF RRR Robot Arm with Dynamixel Motors -->
+
+  <!-- Arguments -->
+  <arg name="port" default="/dev/ttyACM0"/>
+  <arg name="rviz" default="true"/>
+
+  <!-- Load robot description -->
+  <param name="robot_description" 
+         textfile="$(find 3dof_rrr_robot_arm)/urdf/3DoF_RRR_Robot_Arm.urdf"/>
+
+  <!-- Robot State Publisher -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+    <param name="publish_frequency" value="50"/>
+  </node>
+
+  <!-- Robot Controller (Dynamixel) -->
+  <node name="robot_controller" pkg="3dof_rrr_robot_arm" type="robot_controller.py" output="screen">
+    <param name="config" value="$(find 3dof_rrr_robot_arm)/config/dynamixel_config.yaml"/>
+    <param name="port" value="$(arg port)"/>
+  </node>
+
+  <!-- RViz -->
+  <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz" 
+        args="-d $(find 3dof_rrr_robot_arm)/config/moveit.rviz"/>
+
+</launch>

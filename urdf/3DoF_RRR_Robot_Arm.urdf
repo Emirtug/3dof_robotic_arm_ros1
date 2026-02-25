@@ -1,0 +1,146 @@
+<?xml version="1.0"?>
+<robot name="3DoF_RRR_Robot_Arm">
+
+  <material name="Red"><color rgba="1.0 0.0 0.0 1.0"/></material>
+  <material name="Green"><color rgba="0.0 1.0 0.0 1.0"/></material>
+  <material name="Blue"><color rgba="0.0 0.0 1.0 1.0"/></material>
+  <material name="Yellow"><color rgba="1.0 1.0 0.0 1.0"/></material>
+  <material name="Cyan"><color rgba="0.0 1.0 1.0 1.0"/></material>
+  <material name="Magenta"><color rgba="1.0 0.0 1.0 1.0"/></material>
+  <material name="Orange"><color rgba="1.0 0.5 0.0 1.0"/></material>
+  <material name="Lime"><color rgba="0.5 1.0 0.0 1.0"/></material>
+  <material name="Pink"><color rgba="1.0 0.07 0.57 1.0"/></material>
+  <material name="Brown"><color rgba="0.6 0.3 0.0 1.0"/></material>
+  <material name="Grey"><color rgba="0.5 0.5 0.5 1.0"/></material>
+
+  <link name="world"/>
+
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0" rpy="3.14159 0 0"/>
+  </joint>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/base_part2.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Red"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/base_part2.stl" scale="0.001 0.001 0.001"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <origin xyz="-0.0625 -0.0627 -0.2274" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/> 
+    <limit lower="-2.268" upper="2.268" effort="10.0" velocity="1.0"/>
+  </joint>
+
+  <link name="link1">
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2274" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/base_part1.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Blue"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2274" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/base_link.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Green"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2274" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/rulman.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Yellow"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2274" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/servo_1.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Cyan"/>
+    </visual>
+  </link>
+
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0 0 -0.0099" rpy="0 0 0"/>
+    <axis xyz="-0.6534 -0.5970 0.0"/>
+    <limit lower="0" upper="1.57" effort="10.0" velocity="1.0"/>
+  </joint>
+
+  <link name="link2">
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2383" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/link_1.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Magenta"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2383" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/metal_part_servo2.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Orange"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2383" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/link_2_cover.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Pink"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.0625 0.0627 0.2383" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/link_sonu_Servo.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Pink"/>
+    </visual>
+  </link>
+
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <origin xyz="-0.1322 0.1533 -0.0337" rpy="0 0 0"/> 
+    <axis xyz="-0.6534 -0.5570 0"/>
+    <limit lower="0" upper="1.57" effort="10.0" velocity="1.0"/>
+  </joint>
+
+  <link name="link3">
+    <visual> 
+      <origin xyz="0.1947 -0.0906 0.2627" rpy="0 0 0"/> 
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/servo_2.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Lime"/>
+    </visual>
+  </link>
+
+  <joint name="gripper_joint" type="fixed">
+    <parent link="link3"/>
+    <child link="gripper_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="gripper_link">
+    <visual> 
+      <origin xyz="0.1947 -0.0906 0.2627" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/gripper.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Brown"/>
+    </visual>
+    <visual> 
+      <origin xyz="0.1947 -0.0906 0.2627" rpy="0 0 0"/>
+      <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/kapak_new.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="Grey"/>
+    </visual>
+  </link>
+
+  <joint name="tool_tip_joint" type="fixed">
+    <parent link="gripper_link"/>
+    <child link="tool_tip"/>
+    <origin xyz="-0.05 0.06 0.2" rpy="0 0 0"/>
+  </joint>
+
+  <link name="tool_tip">
+    <visual>
+      <geometry><sphere radius="0.012"/></geometry>
+      <material name="Green"/>
+    </visual>
+  </link>
+
+</robot>
