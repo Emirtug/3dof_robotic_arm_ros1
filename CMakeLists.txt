@@ -70,5 +70,5 @@ install(DIRECTORY meshes/
 # Install scripts
 catkin_install_python(PROGRAMS
   scripts/basic_move.py
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/scripts
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
