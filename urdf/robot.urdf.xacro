@@ -20,17 +20,19 @@
   </xacro:macro>
 
   <!-- Materials -->
-  <material name="Red"><color rgba="1.0 0.0 0.0 1.0"/></material>
-  <material name="Green"><color rgba="0.0 1.0 0.0 1.0"/></material>
-  <material name="Blue"><color rgba="0.0 0.0 1.0 1.0"/></material>
-  <material name="Yellow"><color rgba="1.0 1.0 0.0 1.0"/></material>
-  <material name="Cyan"><color rgba="0.0 1.0 1.0 1.0"/></material>
-  <material name="Magenta"><color rgba="1.0 0.0 1.0 1.0"/></material>
-  <material name="Orange"><color rgba="1.0 0.5 0.0 1.0"/></material>
-  <material name="Lime"><color rgba="0.5 1.0 0.0 1.0"/></material>
-  <material name="Pink"><color rgba="1.0 0.07 0.57 1.0"/></material>
-  <material name="Brown"><color rgba="0.6 0.3 0.0 1.0"/></material>
-  <material name="Grey"><color rgba="0.5 0.5 0.5 1.0"/></material>
+  <material name="Black"><color rgba="0.1 0.1 0.1 1.0"/></material>
+  <material name="DarkGrey"><color rgba="0.2 0.2 0.2 1.0"/></material>
+  <material name="Red"><color rgba="0.1 0.1 0.1 1.0"/></material>
+  <material name="Green"><color rgba="0.1 0.1 0.1 1.0"/></material>
+  <material name="Blue"><color rgba="0.15 0.15 0.15 1.0"/></material>
+  <material name="Yellow"><color rgba="0.2 0.2 0.2 1.0"/></material>
+  <material name="Cyan"><color rgba="0.15 0.15 0.15 1.0"/></material>
+  <material name="Magenta"><color rgba="0.1 0.1 0.1 1.0"/></material>
+  <material name="Orange"><color rgba="0.2 0.2 0.2 1.0"/></material>
+  <material name="Lime"><color rgba="0.15 0.15 0.15 1.0"/></material>
+  <material name="Pink"><color rgba="0.1 0.1 0.1 1.0"/></material>
+  <material name="Brown"><color rgba="0.1 0.1 0.1 1.0"/></material>
+  <material name="Grey"><color rgba="0.2 0.2 0.2 1.0"/></material>
 
   <!-- World link -->
   <link name="world"/>
@@ -66,7 +68,7 @@
     <origin xyz="-0.0625 -0.0627 -0.2274" rpy="0 0 0"/>
     <axis xyz="0 0 1"/> 
     <limit lower="-2.268" upper="2.268" effort="10.0" velocity="1.0"/>
-    <dynamics damping="0.5" friction="0.1"/>
+    <dynamics damping="2.0" friction="0.5"/>
   </joint>
 
   <!-- Link 1 -->
@@ -109,7 +111,7 @@
     <origin xyz="0 0 -0.0099" rpy="0 0 0"/>
     <axis xyz="-0.6534 -0.5970 0.0"/>
     <limit lower="0" upper="1.57" effort="10.0" velocity="1.0"/>
-    <dynamics damping="0.5" friction="0.1"/>
+    <dynamics damping="2.0" friction="0.5"/>
   </joint>
 
   <!-- Link 2 -->
@@ -152,13 +154,13 @@
     <origin xyz="-0.1322 0.1533 -0.0337" rpy="0 0 0"/> 
     <axis xyz="-0.6534 -0.5570 0"/>
     <limit lower="0" upper="1.57" effort="10.0" velocity="1.0"/>
-    <dynamics damping="0.5" friction="0.1"/>
+    <dynamics damping="2.0" friction="0.5"/>
   </joint>
 
   <!-- Link 3 -->
   <link name="link3">
     <visual> 
-      <origin xyz="0.1947 -0.0906 0.2627" rpy="0 0 0"/> 
+      <origin xyz="0.1947 -0.0906 0.2727" rpy="0 0 0"/> 
       <geometry><mesh filename="package://3dof_rrr_robot_arm/meshes/servo_2.stl" scale="0.001 0.001 0.001"/></geometry>
       <material name="Lime"/>
     </visual>
@@ -227,24 +229,24 @@
 
   <!-- ==================== GAZEBO SPECIFIC ==================== -->
   
-  <!-- Gazebo Colors -->
+  <!-- Gazebo Colors - All Black/Dark -->
   <gazebo reference="base_link">
-    <material>Gazebo/Red</material>
+    <material>Gazebo/Black</material>
   </gazebo>
   <gazebo reference="link1">
-    <material>Gazebo/Blue</material>
+    <material>Gazebo/DarkGrey</material>
   </gazebo>
   <gazebo reference="link2">
-    <material>Gazebo/Purple</material>
+    <material>Gazebo/Black</material>
   </gazebo>
   <gazebo reference="link3">
-    <material>Gazebo/Green</material>
+    <material>Gazebo/DarkGrey</material>
   </gazebo>
   <gazebo reference="gripper_link">
-    <material>Gazebo/Orange</material>
+    <material>Gazebo/Black</material>
   </gazebo>
   <gazebo reference="tool_tip">
-    <material>Gazebo/Green</material>
+    <material>Gazebo/Red</material>
   </gazebo>
 
   <!-- ros_control plugin -->
