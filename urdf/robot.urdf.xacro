@@ -212,17 +212,11 @@
     <origin xyz="-0.05 0.06 0.2" rpy="0 0 0"/>
   </joint>
 
-  <!-- Tool Tip Link -->
+  <!-- Tool Tip Link (invisible - just for reference frame) -->
   <link name="tool_tip">
-    <visual>
-      <geometry><sphere radius="0.012"/></geometry>
-      <material name="Green"/>
-    </visual>
-    <collision>
-      <geometry><sphere radius="0.012"/></geometry>
-    </collision>
+    <!-- Visual removed - soldering effect will be spawned here -->
     <inertial>
-      <mass value="0.01"/>
+      <mass value="0.001"/>
       <inertia ixx="0.000001" ixy="0" ixz="0" iyy="0.000001" iyz="0" izz="0.000001"/>
     </inertial>
   </link>

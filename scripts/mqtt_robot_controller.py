@@ -29,34 +29,46 @@ JOINT2_MAX = 1.57    # 90 deg
 JOINT3_MIN = 0.0
 JOINT3_MAX = 1.57    # 90 deg
 
-# Position mapping settings
-# ArUco gives cm values, we map to joint angles
-X_RANGE = (-15, 15)    # cm - maps to joint1
-Y_RANGE = (-10, 10)    # cm - maps to joint3
-Z_RANGE = (10, 40)     # cm - maps to joint2
+# ============ REFERENCE BASED CONTROL ============
+# Center reference point (marker rest position)
+CENTER_X = 0.0       # cm - marker center X
+CENTER_Y = 0.0       # cm - marker center Y  
+CENTER_Z = 15.0      # cm - marker default distance from camera
+
+# Movement range around center (how much movement = full joint range)
+# Smaller values = more sensitive, larger = less sensitive
+RANGE_X = 10.0       # ±10cm from center = full joint1 range
+RANGE_Y = 8.0        # ±8cm from center = full joint3 range
+RANGE_Z = 10.0       # ±10cm from center (5-25cm) = full joint2 range
+
+# Joint movement limits (how much the joint can move from home)
+# This prevents the robot from moving too far
+JOINT1_MOVE_LIMIT = 1.5   # rad (~86 deg each side)
+JOINT2_MOVE_LIMIT = 0.6   # rad (~34 deg)
+JOINT3_MOVE_LIMIT = 0.6   # rad (~34 deg)
 
 # Direction inversion (1 = normal, -1 = inverted)
 INVERT_X = -1  # Invert joint1 direction
 INVERT_Y = -1  # Invert joint3 direction
-INVERT_Z = -1  # Invert joint2 direction (closer = down)
+INVERT_Z = -1  # Invert joint2 direction (closer = up)
 
-# Home position (safe)
+# Home position (robot rest position)
 HOME_POSITION = [0.0, 0.5, 0.5]  # joint1, joint2, joint3
 
 # Safe position (when marker lost)
-SAFE_POSITION = [0.0, 0.3, 0.3]
+SAFE_POSITION = [0.0, 0.4, 0.4]
 
 # Smoothing factor (0-1, lower = smoother but slower response)
-SMOOTHING = 0.05
+SMOOTHING = 0.15
 
 # Control rate (Hz) - lower = less vibration
-CONTROL_RATE = 5
+CONTROL_RATE = 10
 
 # Trajectory execution time (seconds) - higher = smoother movement
-TRAJECTORY_TIME = 0.5
+TRAJECTORY_TIME = 0.2
 
 # Deadzone - ignore small position changes (cm)
-DEADZONE = 0.5
+DEADZONE = 0.3
 # ===========================================
 
 
@@ -145,23 +157,29 @@ class MQTTRobotController:
         self.last_message_time = time.time()
         self.message_count += 1
         
-        # Map position to joint angles (inversion handled by swapping output range)
-        if INVERT_X == -1:
-            joint1 = self.map_value(x, X_RANGE[0], X_RANGE[1], JOINT1_MAX, JOINT1_MIN)
-        else:
-            joint1 = self.map_value(x, X_RANGE[0], X_RANGE[1], JOINT1_MIN, JOINT1_MAX)
-            
-        if INVERT_Z == -1:
-            joint2 = self.map_value(z, Z_RANGE[0], Z_RANGE[1], JOINT2_MAX, JOINT2_MIN)
-        else:
-            joint2 = self.map_value(z, Z_RANGE[0], Z_RANGE[1], JOINT2_MIN, JOINT2_MAX)
-            
-        if INVERT_Y == -1:
-            joint3 = self.map_value(y, Y_RANGE[0], Y_RANGE[1], JOINT3_MAX, JOINT3_MIN)
-        else:
-            joint3 = self.map_value(y, Y_RANGE[0], Y_RANGE[1], JOINT3_MIN, JOINT3_MAX)
+        # ============ REFERENCE BASED MAPPING ============
+        # Calculate offset from center reference point
+        offset_x = x - CENTER_X
+        offset_y = y - CENTER_Y
+        offset_z = z - CENTER_Z
         
-        # Clamp to limits
+        # Normalize offset to -1...+1 range
+        norm_x = self.clamp(offset_x / RANGE_X, -1.0, 1.0)
+        norm_y = self.clamp(offset_y / RANGE_Y, -1.0, 1.0)
+        norm_z = self.clamp(offset_z / RANGE_Z, -1.0, 1.0)
+        
+        # Apply direction inversion
+        norm_x *= INVERT_X
+        norm_y *= INVERT_Y
+        norm_z *= INVERT_Z
+        
+        # Calculate joint positions as home + offset
+        # Normalized value * move limit gives the movement from home
+        joint1 = HOME_POSITION[0] + norm_x * JOINT1_MOVE_LIMIT
+        joint2 = HOME_POSITION[1] + norm_z * JOINT2_MOVE_LIMIT
+        joint3 = HOME_POSITION[2] + norm_y * JOINT3_MOVE_LIMIT
+        
+        # Clamp to physical limits
         joint1 = self.clamp(joint1, JOINT1_MIN, JOINT1_MAX)
         joint2 = self.clamp(joint2, JOINT2_MIN, JOINT2_MAX)
         joint3 = self.clamp(joint3, JOINT3_MIN, JOINT3_MAX)
@@ -169,7 +187,7 @@ class MQTTRobotController:
         self.target_joints = [joint1, joint2, joint3]
         
         if self.message_count % 10 == 0:
-            rospy.loginfo(f"RX #{self.message_count}: X:{x:.1f} Y:{y:.1f} Z:{z:.1f} -> J1:{math.degrees(joint1):.1f}° J2:{math.degrees(joint2):.1f}° J3:{math.degrees(joint3):.1f}°")
+            rospy.loginfo(f"RX #{self.message_count}: X:{x:.1f} Y:{y:.1f} Z:{z:.1f} | Off: X:{offset_x:.1f} Y:{offset_y:.1f} Z:{offset_z:.1f} -> J1:{math.degrees(joint1):.1f}° J2:{math.degrees(joint2):.1f}° J3:{math.degrees(joint3):.1f}°")
             
     def handle_command(self, data):
         """Process command messages"""
