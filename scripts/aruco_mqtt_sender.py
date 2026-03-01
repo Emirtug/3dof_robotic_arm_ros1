@@ -15,12 +15,12 @@ import paho.mqtt.client as mqtt
 
 # ============== CONFIGURATION ==============
 # Camera settings
-CAMERA_ID = 0  # USB 2.0 Camera (harici), HP dahili = 2
+CAMERA_ID = 2  # USB 2.0 Camera (harici), HP dahili = 2
 MARKER_SIZE = 0.015              # 15mm marker size in meters
 TARGET_ID = 102
-FRAME_WIDTH = 320                # Düşürüldü - performans için
-FRAME_HEIGHT = 240               # Düşürüldü - performans için
-FOCAL_LENGTH = 320               # Oran korundu
+FRAME_WIDTH = 640                # Kamera çözünürlüğü 4:3 oranında
+FRAME_HEIGHT = 480               # Düşürüldü - performans için
+FOCAL_LENGTH = 640               # Oran korundu
 
 # MQTT settings
 MQTT_BROKER = "test.mosquitto.org"
@@ -552,13 +552,13 @@ class ArucoMQTTSender:
             # Verified indicator
             cv2.circle(frame, (FRAME_WIDTH - 20, 15), 8, (0, 255, 0), -1)
             cv2.putText(frame, "VERIFIED", (FRAME_WIDTH - 100, 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.28, (0, 255, 0), 1)
             
             # MQTT status indicator
             mqtt_status = "CONNECTED" if self.mqtt_connected else "DISCONNECTED"
             mqtt_color = (0, 255, 0) if self.mqtt_connected else (0, 0, 255)
             cv2.putText(frame, f"MQTT: {mqtt_status}", (10, 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, mqtt_color, 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, mqtt_color, 1)
             
             # Show timeout warning if disconnected
             if not self.mqtt_connected:
