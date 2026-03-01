@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 """
 MQTT to Arduino (OpenCM9.04) Controller - WITH SAFETY FEATURES
 Receives position data from MQTT and sends to OpenCM9.04 via Serial

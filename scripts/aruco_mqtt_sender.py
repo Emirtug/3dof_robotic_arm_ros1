@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 # -*- coding: utf-8 -*-
 """
 ArUco MQTT Sender - Operator Side
@@ -15,12 +15,12 @@ import paho.mqtt.client as mqtt
 
 # ============== CONFIGURATION ==============
 # Camera settings
-CAMERA_ID = 2
+CAMERA_ID = 0  # USB 2.0 Camera (harici), HP dahili = 2
 MARKER_SIZE = 0.015              # 15mm marker size in meters
 TARGET_ID = 102
-FRAME_WIDTH = 640
-FRAME_HEIGHT = 480
-FOCAL_LENGTH = 640
+FRAME_WIDTH = 320                # Düşürüldü - performans için
+FRAME_HEIGHT = 240               # Düşürüldü - performans için
+FOCAL_LENGTH = 320               # Oran korundu
 
 # MQTT settings
 MQTT_BROKER = "test.mosquitto.org"
@@ -30,16 +30,28 @@ MQTT_COMMAND_TOPIC = "robot/command"
 MQTT_CLIENT_ID = f"aruco_sender_{int(time.time())}"
 
 # Transmission settings
-SEND_RATE = 10                   # Messages per second (Hz)
+SEND_RATE = 30                   # Messages per second (Hz) - Artırıldı
 SEND_INTERVAL = 1.0 / SEND_RATE
 CONNECTION_TIMEOUT = 8.0         # Auto home after 8 sec disconnect
 
 # Verification settings
-VERIFICATION_TIME = 3.0          # Seconds to hold marker for verification
-VERIFICATION_ZONE_SIZE = 100     # Target zone radius in pixels
+VERIFICATION_TIME = 2.0          # Kısaltıldı - daha hızlı başla
+VERIFICATION_ZONE_SIZE = 50      # Düşürüldü - küçük çözünürlük için
 
 # Marker lost safety settings
 MARKER_LOST_TIMEOUT = 10.0       # Seconds before safety action when marker lost
+
+# Image preprocessing filters (for better ArUco detection)
+FILTER_ENABLED = True            # Master switch - AÇIK (algılama için)
+FILTER_CLAHE = True              # Contrast Limited Adaptive Histogram Equalization - AÇIK
+FILTER_CLAHE_CLIP = 3.0          # CLAHE clip limit (higher = more contrast)
+FILTER_CLAHE_GRID = 8            # CLAHE grid size
+FILTER_DENOISE = False           # Gaussian blur for noise reduction
+FILTER_DENOISE_KERNEL = 3        # Blur kernel size (odd number: 3, 5, 7)
+FILTER_SHARPEN = False           # Sharpening filter
+FILTER_SHARPEN_AMOUNT = 1.0      # Sharpening strength (0.5-2.0)
+FILTER_ADAPTIVE_THRESH = False   # Adaptive thresholding (experimental)
+FILTER_SHOW_DEBUG = False        # Show filtered image in separate window
 # ===========================================
 
 
@@ -54,9 +66,42 @@ class ArucoMQTTSender:
         ], dtype=np.float32)
         self.dist_coeffs = np.zeros((4, 1), dtype=np.float32)
         
-        # ArUco detector setup
-        self.aruco_dict = aruco.Dictionary_get(aruco.DICT_ARUCO_ORIGINAL)
-        self.aruco_params = aruco.DetectorParameters_create()
+        # ArUco detector setup (OpenCV 4.x API)
+        self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_ARUCO_ORIGINAL)
+        self.aruco_params = aruco.DetectorParameters()
+        
+        # GÜÇLÜ ArUco detection parametreleri
+        self.aruco_params.adaptiveThreshConstant = 7
+        self.aruco_params.adaptiveThreshWinSizeMin = 3
+        self.aruco_params.adaptiveThreshWinSizeMax = 53   # Daha geniş - karanlık ortam
+        self.aruco_params.adaptiveThreshWinSizeStep = 10  # Daha hassas
+        self.aruco_params.minMarkerPerimeterRate = 0.02   # Küçük marker'lar için
+        self.aruco_params.maxMarkerPerimeterRate = 4.0
+        self.aruco_params.polygonalApproxAccuracyRate = 0.05
+        self.aruco_params.minCornerDistanceRate = 0.02    # Köşe hassasiyeti
+        self.aruco_params.minOtsuStdDev = 5.0             # Düşük kontrast toleransı
+        self.aruco_params.perspectiveRemoveIgnoredMarginPerCell = 0.13
+        self.aruco_params.cornerRefinementMethod = aruco.CORNER_REFINE_NONE  # CONTOUR hata veriyor
+        
+        # Create ArucoDetector (OpenCV 4.x)
+        self.aruco_detector = aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+        
+        # CLAHE object for contrast enhancement
+        self.clahe = cv2.createCLAHE(
+            clipLimit=FILTER_CLAHE_CLIP, 
+            tileGridSize=(FILTER_CLAHE_GRID, FILTER_CLAHE_GRID)
+        )
+        
+        # Sharpening kernel
+        self.sharpen_kernel = np.array([
+            [0, -1, 0],
+            [-1, 5, -1],
+            [0, -1, 0]
+        ], dtype=np.float32)
+        
+        # Filter statistics
+        self.filter_fps = 0
+        self.last_filter_time = time.time()
         
         # MQTT client setup
         self.mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, MQTT_CLIENT_ID)
@@ -81,6 +126,92 @@ class ArucoMQTTSender:
         # Marker lost tracking
         self.marker_last_seen_time = time.time()
         self.marker_lost_warning_sent = False
+        
+    def preprocess_frame(self, gray):
+        """
+        Apply image preprocessing filters for better ArUco detection.
+        
+        Filters applied (when enabled):
+        1. CLAHE - Improves contrast in different lighting conditions
+        2. Gaussian Blur - Reduces noise
+        3. Sharpening - Enhances edges
+        4. Adaptive Threshold - Binarizes image (experimental)
+        
+        Returns:
+            Preprocessed grayscale image
+        """
+        if not FILTER_ENABLED:
+            return gray
+        
+        processed = gray.copy()
+        
+        # 1. CLAHE (Contrast Limited Adaptive Histogram Equalization)
+        if FILTER_CLAHE:
+            processed = self.clahe.apply(processed)
+        
+        # 2. Denoise with Gaussian Blur
+        if FILTER_DENOISE:
+            kernel_size = FILTER_DENOISE_KERNEL
+            if kernel_size % 2 == 0:
+                kernel_size += 1  # Must be odd
+            processed = cv2.GaussianBlur(processed, (kernel_size, kernel_size), 0)
+        
+        # 3. Sharpening
+        if FILTER_SHARPEN:
+            # Apply sharpening with configurable amount
+            blurred = cv2.GaussianBlur(processed, (0, 0), 3)
+            processed = cv2.addWeighted(
+                processed, 1 + FILTER_SHARPEN_AMOUNT,
+                blurred, -FILTER_SHARPEN_AMOUNT,
+                0
+            )
+        
+        # 4. Adaptive Thresholding (experimental - can help in some lighting)
+        if FILTER_ADAPTIVE_THRESH:
+            processed = cv2.adaptiveThreshold(
+                processed, 255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY,
+                11, 2
+            )
+        
+        # Show debug window if enabled
+        if FILTER_SHOW_DEBUG:
+            # Create comparison view
+            comparison = np.hstack([gray, processed])
+            cv2.putText(comparison, "Original", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(comparison, "Filtered", (FRAME_WIDTH + 10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.imshow('Filter Debug', comparison)
+        
+        return processed
+    
+    def toggle_filter(self, filter_name):
+        """Toggle a specific filter on/off"""
+        global FILTER_CLAHE, FILTER_DENOISE, FILTER_SHARPEN, FILTER_ADAPTIVE_THRESH, FILTER_ENABLED
+        
+        if filter_name == 'clahe':
+            FILTER_CLAHE = not FILTER_CLAHE
+            print(f"[FILTER] CLAHE: {'ON' if FILTER_CLAHE else 'OFF'}")
+        elif filter_name == 'denoise':
+            FILTER_DENOISE = not FILTER_DENOISE
+            print(f"[FILTER] Denoise: {'ON' if FILTER_DENOISE else 'OFF'}")
+        elif filter_name == 'sharpen':
+            FILTER_SHARPEN = not FILTER_SHARPEN
+            print(f"[FILTER] Sharpen: {'ON' if FILTER_SHARPEN else 'OFF'}")
+        elif filter_name == 'adaptive':
+            FILTER_ADAPTIVE_THRESH = not FILTER_ADAPTIVE_THRESH
+            print(f"[FILTER] Adaptive Thresh: {'ON' if FILTER_ADAPTIVE_THRESH else 'OFF'}")
+        elif filter_name == 'all':
+            FILTER_ENABLED = not FILTER_ENABLED
+            print(f"[FILTER] All Filters: {'ON' if FILTER_ENABLED else 'OFF'}")
+        elif filter_name == 'debug':
+            global FILTER_SHOW_DEBUG
+            FILTER_SHOW_DEBUG = not FILTER_SHOW_DEBUG
+            print(f"[FILTER] Debug View: {'ON' if FILTER_SHOW_DEBUG else 'OFF'}")
+            if not FILTER_SHOW_DEBUG:
+                cv2.destroyWindow('Filter Debug')
         
     def on_connect(self, client, userdata, flags, rc, properties=None):
         if rc == 0:
@@ -329,6 +460,7 @@ class ArucoMQTTSender:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
         cap.set(cv2.CAP_PROP_FPS, 30)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Buffer'ı minimize et - LAG önleme
         
         if not cap.isOpened():
             print(f"ERROR: Cannot open camera /dev/video{CAMERA_ID}")
@@ -350,20 +482,31 @@ class ArucoMQTTSender:
         print("=" * 60)
         print("  Verification required before operation!")
         print("  Hold marker in center zone for 3 seconds.")
+        print("-" * 60)
+        print("  Filter Controls (after verification):")
+        print("    [F] Toggle all filters")
+        print("    [1] Toggle CLAHE")
+        print("    [2] Toggle Denoise")
+        print("    [3] Toggle Sharpen")
+        print("    [4] Toggle Adaptive Threshold")
+        print("    [D] Toggle debug view")
         print("=" * 60)
         print()
         
         while True:
-            ret, frame = cap.read()
+            # Buffer'daki eski frame'leri atla (lag önleme)
+            cap.grab()  # Eski frame'i at
+            ret, frame = cap.read()  # Yeni frame al
             if not ret:
                 break
             
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # Detect markers
-            corners, ids, _ = aruco.detectMarkers(
-                gray, self.aruco_dict, parameters=self.aruco_params
-            )
+            # Apply preprocessing filters
+            gray_filtered = self.preprocess_frame(gray)
+            
+            # Detect markers on filtered image (OpenCV 4.x API)
+            corners, ids, _ = self.aruco_detector.detectMarkers(gray_filtered)
             
             # Find target marker center
             marker_center = None
@@ -506,9 +649,9 @@ class ArucoMQTTSender:
                             cv2.putText(frame, "TX", (FRAME_WIDTH - 60, 55),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                         
-                        # Draw coordinate axes
-                        aruco.drawAxis(frame, self.camera_matrix, self.dist_coeffs,
-                                       rvecs[0], tvecs[0], MARKER_SIZE * 2)
+                        # Draw coordinate axes (OpenCV 4.x)
+                        cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs,
+                                          rvecs[0], tvecs[0], MARKER_SIZE * 2)
             else:
                 cv2.putText(frame, "NO MARKER DETECTED", (10, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
@@ -539,7 +682,21 @@ class ArucoMQTTSender:
             cv2.line(frame, (FRAME_WIDTH//2, FRAME_HEIGHT//2 - 20),
                      (FRAME_WIDTH//2, FRAME_HEIGHT//2 + 20), (50, 50, 50), 1)
             
-            cv2.imshow('ArUco MQTT Sender - [Q] Quit [SPACE] Toggle', frame)
+            # Filter status indicator
+            filter_y = FRAME_HEIGHT - 25
+            filter_status = f"Filters: {'ON' if FILTER_ENABLED else 'OFF'}"
+            if FILTER_ENABLED:
+                active = []
+                if FILTER_CLAHE: active.append('C')
+                if FILTER_DENOISE: active.append('D')
+                if FILTER_SHARPEN: active.append('S')
+                if FILTER_ADAPTIVE_THRESH: active.append('A')
+                if active:
+                    filter_status += f" [{'+'.join(active)}]"
+            cv2.putText(frame, filter_status, (FRAME_WIDTH - 200, filter_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1)
+            
+            cv2.imshow('ArUco MQTT Sender - [Q] Quit [SPACE] Toggle [F] Filters', frame)
             
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
@@ -554,6 +711,19 @@ class ArucoMQTTSender:
                 filename = f"mqtt_sender_{datetime.now().strftime('%H%M%S')}.png"
                 cv2.imwrite(filename, frame)
                 print(f">>> Screenshot saved: {filename}")
+            # Filter controls
+            elif key == ord('f'):
+                self.toggle_filter('all')
+            elif key == ord('1'):
+                self.toggle_filter('clahe')
+            elif key == ord('2'):
+                self.toggle_filter('denoise')
+            elif key == ord('3'):
+                self.toggle_filter('sharpen')
+            elif key == ord('4'):
+                self.toggle_filter('adaptive')
+            elif key == ord('d'):
+                self.toggle_filter('debug')
         
         # Cleanup
         print("\nShutting down...")

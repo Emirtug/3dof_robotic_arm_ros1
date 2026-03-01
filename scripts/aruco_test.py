@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 # -*- coding: utf-8 -*-
 """
 ArUco Test - ROS olmadan direkt kamera testi
@@ -11,13 +11,14 @@ import numpy as np
 
 def main():
     # Kamera ID (video2 = 2)
-    CAMERA_ID = 2
+    CAMERA_ID = 0  # USB 2.0 Camera (harici)
     MARKER_SIZE = 0.015  # 15mm
     TARGET_ID = 102
     
-    # ArUco dictionary
-    aruco_dict = aruco.Dictionary_get(aruco.DICT_ARUCO_ORIGINAL)
-    aruco_params = aruco.DetectorParameters_create()
+    # ArUco dictionary (OpenCV 4.x API)
+    aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_ARUCO_ORIGINAL)
+    aruco_params = aruco.DetectorParameters()
+    aruco_detector = aruco.ArucoDetector(aruco_dict, aruco_params)
     
     # Default camera matrix (640x480)
     camera_matrix = np.array([
@@ -61,10 +62,8 @@ def main():
         frame_count += 1
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        # Marker tespiti
-        corners, ids, rejected = aruco.detectMarkers(
-            gray, aruco_dict, parameters=aruco_params
-        )
+        # Marker tespiti (OpenCV 4.x API)
+        corners, ids, rejected = aruco_detector.detectMarkers(gray)
         
         # Sonuçları çiz
         if ids is not None:
@@ -76,9 +75,9 @@ def main():
                     [corners[i]], MARKER_SIZE, camera_matrix, dist_coeffs
                 )
                 
-                # Axis çiz
-                aruco.drawAxis(frame, camera_matrix, dist_coeffs,
-                               rvecs[0], tvecs[0], MARKER_SIZE)
+                # Axis çiz (OpenCV 4.x - cv2.drawFrameAxes)
+                cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs,
+                                  rvecs[0], tvecs[0], MARKER_SIZE)
                 
                 tvec = tvecs[0][0]
                 distance = np.linalg.norm(tvec) * 100  # cm

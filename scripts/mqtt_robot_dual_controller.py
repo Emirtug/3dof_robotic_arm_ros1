@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 """
 MQTT Dual Controller - Gazebo + Arduino Parallel Control
 Controls both Gazebo simulation and real robot via Arduino simultaneously

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 # -*- coding: utf-8 -*-
 """
 ArUco Position Tracker
@@ -12,7 +12,7 @@ import numpy as np
 from datetime import datetime
 
 # ============== AYARLAR ==============
-CAMERA_ID = 2                    # /dev/video2
+CAMERA_ID = 0                    # USB 2.0 Camera (harici)
 MARKER_SIZE = 0.015              # 15mm (metre cinsinden)
 TARGET_ID = 102                  # Hedef marker ID
 
@@ -39,9 +39,10 @@ def create_camera_matrix():
 
 
 def main():
-    # ArUco setup
-    aruco_dict = aruco.Dictionary_get(aruco.DICT_ARUCO_ORIGINAL)
-    aruco_params = aruco.DetectorParameters_create()
+    # ArUco setup (OpenCV 4.x API)
+    aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_ARUCO_ORIGINAL)
+    aruco_params = aruco.DetectorParameters()
+    aruco_detector = aruco.ArucoDetector(aruco_dict, aruco_params)
     
     # Kamera matrisi
     camera_matrix, dist_coeffs = create_camera_matrix()
@@ -84,10 +85,8 @@ def main():
         
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        # Marker tespiti
-        corners, ids, _ = aruco.detectMarkers(
-            gray, aruco_dict, parameters=aruco_params
-        )
+        # Marker tespiti (OpenCV 4.x API)
+        corners, ids, _ = aruco_detector.detectMarkers(gray)
         
         # Siyah bilgi paneli (üstte)
         cv2.rectangle(frame, (0, 0), (FRAME_WIDTH, 100), (0, 0, 0), -1)
@@ -137,9 +136,9 @@ def main():
                     cv2.putText(frame, f"Mesafe: {distance:.1f} cm", 
                                 (FRAME_WIDTH - 180, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                     
-                    # Axis çiz
-                    aruco.drawAxis(frame, camera_matrix, dist_coeffs,
-                                   rvecs[0], tvecs[0], MARKER_SIZE * 2)
+                    # Axis çiz (OpenCV 4.x)
+                    cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs,
+                                      rvecs[0], tvecs[0], MARKER_SIZE * 2)
                     
                     # Marker merkezi işaretle
                     center = corners[i][0].mean(axis=0).astype(int)
