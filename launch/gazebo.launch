@@ -39,10 +39,10 @@
   <!-- Load controller config based on argument -->
   <rosparam file="$(find 3dof_rrr_robot_arm)/config/controllers/$(arg controller)_controller.yaml" command="load"/>
 
-  <!-- Load PID gains for Gazebo -->
-  <rosparam ns="gazebo_ros_control" 
+  <!-- PID gains for Gazebo (disabled - using Gazebo internal SetPosition) -->
+  <!-- <rosparam ns="gazebo_ros_control" 
             file="$(find 3dof_rrr_robot_arm)/config/controllers/$(arg controller)_controller.yaml" 
-            command="load" subst_value="true"/>
+            command="load" subst_value="true"/> -->
 
   <!-- Spawn controllers -->
   <node name="controller_spawner" pkg="controller_manager" type="spawner" 

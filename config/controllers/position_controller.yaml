@@ -24,7 +24,7 @@ arm_controller:
   state_publish_rate: 50
   action_monitor_rate: 20
 
-# PID Gains for each joint (reduced for smoother movement)
+# PID Gains for each joint
 pid_gains:
   joint1:
     p: 50.0
@@ -35,6 +35,6 @@ pid_gains:
     i: 0.01
     d: 5.0
   joint3:
-    p: 50.0
-    i: 0.01
-    d: 5.0
+    p: 5.0
+    i: 0.0
+    d: 25.0

@@ -110,8 +110,8 @@
     <child link="link2"/>
     <origin xyz="0 0 -0.0099" rpy="0 0 0"/>
     <axis xyz="-0.6534 -0.5970 0.0"/>
-    <limit lower="0" upper="1.57" effort="10.0" velocity="1.0"/>
-    <dynamics damping="2.0" friction="0.5"/>
+    <limit lower="0" upper="2.0" effort="10.0" velocity="1.0"/>
+    <dynamics damping="0.8" friction="0.2"/>
   </joint>
 
   <!-- Link 2 -->
@@ -138,7 +138,7 @@
     </visual>
     <collision>
       <origin xyz="-0.05 0.05 0" rpy="0 1.57 0"/>
-      <geometry><cylinder radius="0.025" length="0.15"/></geometry>
+      <geometry><cylinder radius="0.015" length="0.15"/></geometry>
     </collision>
     <inertial>
       <origin xyz="-0.05 0.05 0" rpy="0 0 0"/>
@@ -153,7 +153,7 @@
     <child link="link3"/>
     <origin xyz="-0.1322 0.1533 -0.0337" rpy="0 0 0"/> 
     <axis xyz="-0.6534 -0.5570 0"/>
-    <limit lower="0" upper="1.57" effort="10.0" velocity="1.0"/>
+    <limit lower="0" upper="2.0" effort="10.0" velocity="1.0"/>
     <dynamics damping="2.0" friction="0.5"/>
   </joint>
 
@@ -232,12 +232,15 @@
   </gazebo>
   <gazebo reference="link2">
     <material>Gazebo/Black</material>
+    <self_collide>false</self_collide>
   </gazebo>
   <gazebo reference="link3">
     <material>Gazebo/DarkGrey</material>
+    <self_collide>false</self_collide>
   </gazebo>
   <gazebo reference="gripper_link">
     <material>Gazebo/Black</material>
+    <self_collide>false</self_collide>
   </gazebo>
   <gazebo reference="tool_tip">
     <material>Gazebo/Red</material>

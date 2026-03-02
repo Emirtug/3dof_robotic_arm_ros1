@@ -15,12 +15,12 @@ import paho.mqtt.client as mqtt
 
 # ============== CONFIGURATION ==============
 # Camera settings
-CAMERA_ID = 2  # USB 2.0 Camera (harici), HP dahili = 2
+CAMERA_ID = 2  # USB 2.0 Camera (external), HP built-in = 2
 MARKER_SIZE = 0.015              # 15mm marker size in meters
 TARGET_ID = 102
-FRAME_WIDTH = 640                # Kamera çözünürlüğü 4:3 oranında
-FRAME_HEIGHT = 480               # Düşürüldü - performans için
-FOCAL_LENGTH = 640               # Oran korundu
+FRAME_WIDTH = 640                # Camera resolution in 4:3 ratio
+FRAME_HEIGHT = 480               # Reduced - for performance
+FOCAL_LENGTH = 640               # Aspect ratio preserved
 
 # MQTT settings
 MQTT_BROKER = "test.mosquitto.org"
@@ -30,23 +30,23 @@ MQTT_COMMAND_TOPIC = "robot/command"
 MQTT_CLIENT_ID = f"aruco_sender_{int(time.time())}"
 
 # Transmission settings
-SEND_RATE = 30                   # Messages per second (Hz) - Artırıldı
+SEND_RATE = 30                   # Messages per second (Hz) - Increased
 SEND_INTERVAL = 1.0 / SEND_RATE
 CONNECTION_TIMEOUT = 8.0         # Auto home after 8 sec disconnect
 
 # Verification settings
-VERIFICATION_TIME = 2.0          # Kısaltıldı - daha hızlı başla
-VERIFICATION_ZONE_SIZE = 50      # Düşürüldü - küçük çözünürlük için
+VERIFICATION_TIME = 2.0          # Shortened - faster start
+VERIFICATION_ZONE_SIZE = 50      # Lowered - for small resolution
 
 # Marker lost safety settings
 MARKER_LOST_TIMEOUT = 10.0       # Seconds before safety action when marker lost
 
 # Image preprocessing filters (for better ArUco detection)
-FILTER_ENABLED = True            # Master switch - AÇIK (algılama için)
-FILTER_CLAHE = True              # Contrast Limited Adaptive Histogram Equalization - AÇIK
+FILTER_ENABLED = True            # Master switch - ON (for detection)
+FILTER_CLAHE = True              # Contrast Limited Adaptive Histogram Equalization - ON
 FILTER_CLAHE_CLIP = 3.0          # CLAHE clip limit (higher = more contrast)
 FILTER_CLAHE_GRID = 8            # CLAHE grid size
-FILTER_DENOISE = False           # Gaussian blur for noise reduction
+FILTER_DENOISE = True            # Gaussian blur for noise reduction - ON (reduces jitter)
 FILTER_DENOISE_KERNEL = 3        # Blur kernel size (odd number: 3, 5, 7)
 FILTER_SHARPEN = False           # Sharpening filter
 FILTER_SHARPEN_AMOUNT = 1.0      # Sharpening strength (0.5-2.0)
@@ -57,7 +57,6 @@ FILTER_SHOW_DEBUG = False        # Show filtered image in separate window
 
 class ArucoMQTTSender:
     def __init__(self):
-        # Camera intrinsic matrix
         cx, cy = FRAME_WIDTH / 2, FRAME_HEIGHT / 2
         self.camera_matrix = np.array([
             [FOCAL_LENGTH, 0, cx],
@@ -66,50 +65,46 @@ class ArucoMQTTSender:
         ], dtype=np.float32)
         self.dist_coeffs = np.zeros((4, 1), dtype=np.float32)
         
-        # ArUco detector setup (OpenCV 4.x API)
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_ARUCO_ORIGINAL)
         self.aruco_params = aruco.DetectorParameters()
         
-        # GÜÇLÜ ArUco detection parametreleri
         self.aruco_params.adaptiveThreshConstant = 7
         self.aruco_params.adaptiveThreshWinSizeMin = 3
-        self.aruco_params.adaptiveThreshWinSizeMax = 53   # Daha geniş - karanlık ortam
-        self.aruco_params.adaptiveThreshWinSizeStep = 10  # Daha hassas
-        self.aruco_params.minMarkerPerimeterRate = 0.02   # Küçük marker'lar için
+        self.aruco_params.adaptiveThreshWinSizeMax = 53
+        self.aruco_params.adaptiveThreshWinSizeStep = 4
+        self.aruco_params.minMarkerPerimeterRate = 0.02
         self.aruco_params.maxMarkerPerimeterRate = 4.0
-        self.aruco_params.polygonalApproxAccuracyRate = 0.05
-        self.aruco_params.minCornerDistanceRate = 0.02    # Köşe hassasiyeti
-        self.aruco_params.minOtsuStdDev = 5.0             # Düşük kontrast toleransı
+        self.aruco_params.polygonalApproxAccuracyRate = 0.08
+        self.aruco_params.minCornerDistanceRate = 0.02
+        self.aruco_params.minOtsuStdDev = 5.0
         self.aruco_params.perspectiveRemoveIgnoredMarginPerCell = 0.13
-        self.aruco_params.cornerRefinementMethod = aruco.CORNER_REFINE_NONE  # CONTOUR hata veriyor
+        self.aruco_params.errorCorrectionRate = 0.6
+        self.aruco_params.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX
+        self.aruco_params.cornerRefinementWinSize = 5
+        self.aruco_params.cornerRefinementMaxIterations = 30
+        self.aruco_params.cornerRefinementMinAccuracy = 0.1
         
-        # Create ArucoDetector (OpenCV 4.x)
         self.aruco_detector = aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
         
-        # CLAHE object for contrast enhancement
         self.clahe = cv2.createCLAHE(
             clipLimit=FILTER_CLAHE_CLIP, 
             tileGridSize=(FILTER_CLAHE_GRID, FILTER_CLAHE_GRID)
         )
         
-        # Sharpening kernel
         self.sharpen_kernel = np.array([
             [0, -1, 0],
             [-1, 5, -1],
             [0, -1, 0]
         ], dtype=np.float32)
         
-        # Filter statistics
         self.filter_fps = 0
         self.last_filter_time = time.time()
         
-        # MQTT client setup
         self.mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, MQTT_CLIENT_ID)
         self.mqtt_client.on_connect = self.on_connect
         self.mqtt_client.on_disconnect = self.on_disconnect
         self.mqtt_connected = False
         
-        # State variables
         self.last_send_time = 0
         self.last_successful_send = time.time()
         self.sending_enabled = True
@@ -117,15 +112,20 @@ class ArucoMQTTSender:
         self.message_count = 0
         self.home_sent_for_timeout = False
         
-        # Verification state
         self.verified = False
         self.verification_start_time = None
         self.verification_progress = 0.0
         self.last_marker_center = None
         
-        # Marker lost tracking
         self.marker_last_seen_time = time.time()
         self.marker_lost_warning_sent = False
+        
+        # Temporal stabilization - keep last position for a few frames when marker is lost
+        self.stable_corners = None
+        self.stable_id = None
+        self.frames_since_seen = 0
+        self.max_holdover_frames = 5  # Hold last position for 5 frames when marker is lost
+        
         
     def preprocess_frame(self, gray):
         """
@@ -158,7 +158,6 @@ class ArucoMQTTSender:
         
         # 3. Sharpening
         if FILTER_SHARPEN:
-            # Apply sharpening with configurable amount
             blurred = cv2.GaussianBlur(processed, (0, 0), 3)
             processed = cv2.addWeighted(
                 processed, 1 + FILTER_SHARPEN_AMOUNT,
@@ -175,9 +174,7 @@ class ArucoMQTTSender:
                 11, 2
             )
         
-        # Show debug window if enabled
         if FILTER_SHOW_DEBUG:
-            # Create comparison view
             comparison = np.hstack([gray, processed])
             cv2.putText(comparison, "Original", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
@@ -268,14 +265,12 @@ class ArucoMQTTSender:
         return time.time() - self.marker_last_seen_time
             
     def send_position(self, x, y, z):
-        """Publish position data via MQTT"""
+        """Publish position data via MQTT and print joint angles"""
         if not self.mqtt_connected:
             return False
-            
         current_time = time.time()
         if current_time - self.last_send_time < SEND_INTERVAL:
             return False
-            
         data = {
             "x": round(x, 2),
             "y": round(y, 2),
@@ -283,7 +278,6 @@ class ArucoMQTTSender:
             "timestamp": current_time,
             "marker_id": TARGET_ID
         }
-        
         try:
             self.mqtt_client.publish(MQTT_TOPIC, json.dumps(data))
             self.last_send_time = current_time
@@ -325,18 +319,15 @@ class ArucoMQTTSender:
     def update_verification(self, marker_center):
         """Update verification progress"""
         if marker_center is None:
-            # Marker lost, reset progress
             self.verification_start_time = None
             self.verification_progress = max(0, self.verification_progress - 0.05)
             return False
             
         if not self.is_in_verification_zone(marker_center):
-            # Marker outside zone, slowly decrease
             self.verification_start_time = None
             self.verification_progress = max(0, self.verification_progress - 0.02)
             return False
             
-        # Marker in zone
         if self.verification_start_time is None:
             self.verification_start_time = time.time()
             
@@ -358,44 +349,38 @@ class ArucoMQTTSender:
         
     def draw_verification_screen(self, frame, marker_center=None):
         """Draw the Face ID style verification interface"""
-        # Dark overlay
         overlay = frame.copy()
         cv2.rectangle(overlay, (0, 0), (FRAME_WIDTH, FRAME_HEIGHT), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
         
         center_x, center_y = FRAME_WIDTH // 2, FRAME_HEIGHT // 2
         
-        # Title
         cv2.putText(frame, "MARKER VERIFICATION", (center_x - 140, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         cv2.putText(frame, "Hold marker in the target zone", (center_x - 160, 80),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
         
-        # Draw verification zone circle (outer)
         zone_color = (0, 255, 0) if self.verification_progress > 0.5 else (0, 165, 255)
         cv2.circle(frame, (center_x, center_y), VERIFICATION_ZONE_SIZE, zone_color, 2)
         
-        # Draw progress arc
         if self.verification_progress > 0:
             angle = int(360 * self.verification_progress)
             axes = (VERIFICATION_ZONE_SIZE + 15, VERIFICATION_ZONE_SIZE + 15)
             cv2.ellipse(frame, (center_x, center_y), axes, -90, 0, angle, (0, 255, 0), 8)
         
-        # Inner target crosshair
         cross_size = 20
         cv2.line(frame, (center_x - cross_size, center_y), 
                  (center_x + cross_size, center_y), (100, 100, 100), 1)
         cv2.line(frame, (center_x, center_y - cross_size), 
                  (center_x, center_y + cross_size), (100, 100, 100), 1)
         
-        # Corner brackets
         bracket_size = 30
         bracket_offset = VERIFICATION_ZONE_SIZE - 10
         corners = [
-            (center_x - bracket_offset, center_y - bracket_offset),  # Top-left
-            (center_x + bracket_offset, center_y - bracket_offset),  # Top-right
-            (center_x - bracket_offset, center_y + bracket_offset),  # Bottom-left
-            (center_x + bracket_offset, center_y + bracket_offset),  # Bottom-right
+            (center_x - bracket_offset, center_y - bracket_offset),
+            (center_x + bracket_offset, center_y - bracket_offset),
+            (center_x - bracket_offset, center_y + bracket_offset),
+            (center_x + bracket_offset, center_y + bracket_offset),
         ]
         
         for i, (cx, cy) in enumerate(corners):
@@ -404,7 +389,6 @@ class ArucoMQTTSender:
             cv2.line(frame, (cx, cy), (cx + dx, cy), zone_color, 2)
             cv2.line(frame, (cx, cy), (cx, cy + dy), zone_color, 2)
         
-        # Progress percentage
         percent = int(self.verification_progress * 100)
         percent_text = f"{percent}%"
         text_size = cv2.getTextSize(percent_text, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 3)[0]
@@ -412,27 +396,21 @@ class ArucoMQTTSender:
                     (center_x - text_size[0]//2, center_y + VERIFICATION_ZONE_SIZE + 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
         
-        # Progress bar at bottom
         bar_width = 300
         bar_height = 20
         bar_x = center_x - bar_width // 2
         bar_y = FRAME_HEIGHT - 60
         
-        # Background
         cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height),
                       (50, 50, 50), -1)
-        # Progress fill
         fill_width = int(bar_width * self.verification_progress)
         if fill_width > 0:
-            # Gradient effect
             color = (0, int(255 * self.verification_progress), int(255 * (1 - self.verification_progress)))
             cv2.rectangle(frame, (bar_x, bar_y), (bar_x + fill_width, bar_y + bar_height),
                           color, -1)
-        # Border
         cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height),
                       (200, 200, 200), 2)
         
-        # Status text
         if marker_center is None:
             status = "Searching for marker..."
             status_color = (0, 0, 255)
@@ -447,7 +425,6 @@ class ArucoMQTTSender:
         cv2.putText(frame, status, (center_x - text_size[0]//2, bar_y - 15),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
         
-        # Show marker ID info
         cv2.putText(frame, f"Target: Marker ID {TARGET_ID}", (10, FRAME_HEIGHT - 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1)
         
@@ -455,18 +432,16 @@ class ArucoMQTTSender:
             
     def run(self):
         """Main loop"""
-        # Initialize camera
         cap = cv2.VideoCapture(CAMERA_ID)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
         cap.set(cv2.CAP_PROP_FPS, 30)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Buffer'ı minimize et - LAG önleme
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize buffer - prevent lag
         
         if not cap.isOpened():
             print(f"ERROR: Cannot open camera /dev/video{CAMERA_ID}")
             return
             
-        # Connect to MQTT broker
         if not self.connect_mqtt():
             print("WARNING: No MQTT connection, running in view-only mode")
             
@@ -494,44 +469,56 @@ class ArucoMQTTSender:
         print()
         
         while True:
-            # Buffer'daki eski frame'leri atla (lag önleme)
-            cap.grab()  # Eski frame'i at
-            ret, frame = cap.read()  # Yeni frame al
+            cap.grab()
+            ret, frame = cap.read()
             if not ret:
                 break
             
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # Apply preprocessing filters
             gray_filtered = self.preprocess_frame(gray)
             
-            # Detect markers on filtered image (OpenCV 4.x API)
             corners, ids, _ = self.aruco_detector.detectMarkers(gray_filtered)
             
-            # Find target marker center
             marker_center = None
             marker_corners = None
+            target_found_this_frame = False
             if ids is not None:
                 for i, marker_id in enumerate(ids.flatten()):
                     if marker_id == TARGET_ID:
                         marker_corners = corners[i]
                         marker_center = corners[i][0].mean(axis=0).astype(int)
                         marker_center = tuple(marker_center)
+                        target_found_this_frame = True
+                        self.stable_corners = corners[i]
+                        self.stable_id = TARGET_ID
+                        self.frames_since_seen = 0
                         break
             
-            # VERIFICATION PHASE
+            # Temporal holdover: if marker not found in this frame, keep last position
+            if not target_found_this_frame and self.stable_corners is not None:
+                self.frames_since_seen += 1
+                if self.frames_since_seen <= self.max_holdover_frames:
+                    marker_corners = self.stable_corners
+                    marker_center = self.stable_corners[0].mean(axis=0).astype(int)
+                    marker_center = tuple(marker_center)
+                    if ids is None:
+                        ids = np.array([[self.stable_id]])
+                        corners = [self.stable_corners]
+                    else:
+                        ids = np.append(ids, [[self.stable_id]], axis=0)
+                        corners = list(corners) + [self.stable_corners]
+                else:
+                    self.stable_corners = None
+            
             if not self.verified:
-                # Draw detected marker if found
                 if marker_corners is not None:
                     aruco.drawDetectedMarkers(frame, [marker_corners], np.array([[TARGET_ID]]))
                     cv2.circle(frame, marker_center, 8, (0, 255, 255), -1)
                 
-                # Update verification
                 if self.update_verification(marker_center):
-                    # Verification complete, skip drawing and continue to main loop
                     continue
                 
-                # Draw verification UI
                 frame = self.draw_verification_screen(frame, marker_center)
                 
                 cv2.imshow('ArUco MQTT Sender - Verification', frame)
@@ -541,26 +528,20 @@ class ArucoMQTTSender:
                     break
                 continue
             
-            # OPERATION PHASE (after verification)
-            # Check connection timeout for safety
             if self.check_connection_timeout():
                 self.send_command("home")
             
-            # Info panel background
             cv2.rectangle(frame, (0, 0), (FRAME_WIDTH, 110), (0, 0, 0), -1)
             
-            # Verified indicator
             cv2.circle(frame, (FRAME_WIDTH - 20, 15), 8, (0, 255, 0), -1)
             cv2.putText(frame, "VERIFIED", (FRAME_WIDTH - 100, 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.28, (0, 255, 0), 1)
             
-            # MQTT status indicator
             mqtt_status = "CONNECTED" if self.mqtt_connected else "DISCONNECTED"
             mqtt_color = (0, 255, 0) if self.mqtt_connected else (0, 0, 255)
             cv2.putText(frame, f"MQTT: {mqtt_status}", (10, 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.35, mqtt_color, 1)
             
-            # Show timeout warning if disconnected
             if not self.mqtt_connected:
                 elapsed = time.time() - self.last_successful_send
                 remaining = max(0, CONNECTION_TIMEOUT - elapsed)
@@ -571,17 +552,14 @@ class ArucoMQTTSender:
                     cv2.putText(frame, "HOME SENT", (10, 105),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 1)
             
-            # Transmission status
             send_status = "ACTIVE" if self.sending_enabled else "PAUSED"
             send_color = (0, 255, 0) if self.sending_enabled else (0, 165, 255)
             cv2.putText(frame, f"TX: {send_status}", (250, 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, send_color, 1)
             
-            # Message counter
             cv2.putText(frame, f"Msgs: {self.message_count}", (400, 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
             
-            # Check if target marker is found
             target_marker_found = False
             unauthorized_markers = []
             if ids is not None:
@@ -591,15 +569,12 @@ class ArucoMQTTSender:
                     else:
                         unauthorized_markers.append(marker_id)
             
-            # Check marker lost timeout
             self.check_marker_lost_timeout(target_marker_found)
             
-            # Show unauthorized marker warning
             if unauthorized_markers:
                 warning_text = f"WARNING: Unknown marker(s): {unauthorized_markers}"
                 cv2.putText(frame, warning_text, (10, FRAME_HEIGHT - 20),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-                # Flash effect
                 if int(time.time() * 3) % 2 == 0:
                     cv2.rectangle(frame, (0, FRAME_HEIGHT - 35), (FRAME_WIDTH, FRAME_HEIGHT), 
                                   (0, 0, 100), -1)
@@ -611,12 +586,10 @@ class ArucoMQTTSender:
                 
                 for i, marker_id in enumerate(ids.flatten()):
                     if marker_id == TARGET_ID:
-                        # Estimate pose
                         rvecs, tvecs, _ = aruco.estimatePoseSingleMarkers(
                             [corners[i]], MARKER_SIZE, self.camera_matrix, self.dist_coeffs
                         )
                         
-                        # Position in cm
                         tvec = tvecs[0][0]
                         x_cm = tvec[0] * 100
                         y_cm = tvec[1] * 100
@@ -624,18 +597,15 @@ class ArucoMQTTSender:
                         
                         self.last_position = (x_cm, y_cm, z_cm)
                         
-                        # Send via MQTT
                         if self.sending_enabled:
                             sent = self.send_position(x_cm, y_cm, z_cm)
                             if sent:
                                 ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
                                 print(f"[{ts}] TX -> X:{x_cm:+7.2f} Y:{y_cm:+7.2f} Z:{z_cm:+7.2f}")
                         
-                        # Display marker found
                         cv2.putText(frame, f"MARKER {TARGET_ID} FOUND",
                                     (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                         
-                        # Position values
                         cv2.putText(frame, f"X: {x_cm:+.1f} cm", (10, 80),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 150, 255), 2)
                         cv2.putText(frame, f"Y: {y_cm:+.1f} cm", (180, 80),
@@ -643,13 +613,11 @@ class ArucoMQTTSender:
                         cv2.putText(frame, f"Z: {z_cm:+.1f} cm", (350, 80),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 150, 0), 2)
                         
-                        # TX indicator light
                         if self.sending_enabled and self.mqtt_connected:
                             cv2.circle(frame, (FRAME_WIDTH - 30, 50), 10, (0, 255, 0), -1)
                             cv2.putText(frame, "TX", (FRAME_WIDTH - 60, 55),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                         
-                        # Draw coordinate axes (OpenCV 4.x)
                         cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs,
                                           rvecs[0], tvecs[0], MARKER_SIZE * 2)
             else:
@@ -661,12 +629,10 @@ class ArucoMQTTSender:
                     cv2.putText(frame, f"Last: X:{x:+.1f} Y:{y:+.1f} Z:{z:+.1f}",
                                 (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 1)
                 
-                # Show marker lost warning countdown
                 marker_lost_elapsed = self.get_marker_lost_elapsed()
-                if marker_lost_elapsed > 2.0:  # Start showing after 2 seconds
+                if marker_lost_elapsed > 2.0:
                     remaining = max(0, MARKER_LOST_TIMEOUT - marker_lost_elapsed)
                     if remaining > 0:
-                        # Warning bar
                         bar_width = int((remaining / MARKER_LOST_TIMEOUT) * 200)
                         cv2.rectangle(frame, (10, 90), (210, 105), (50, 50, 50), -1)
                         cv2.rectangle(frame, (10, 90), (10 + bar_width, 105), (0, 165, 255), -1)
@@ -676,13 +642,11 @@ class ArucoMQTTSender:
                         cv2.putText(frame, "!! SAFE MODE ACTIVATED !!", (10, 103),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
             
-            # Center crosshair
             cv2.line(frame, (FRAME_WIDTH//2 - 20, FRAME_HEIGHT//2),
                      (FRAME_WIDTH//2 + 20, FRAME_HEIGHT//2), (50, 50, 50), 1)
             cv2.line(frame, (FRAME_WIDTH//2, FRAME_HEIGHT//2 - 20),
                      (FRAME_WIDTH//2, FRAME_HEIGHT//2 + 20), (50, 50, 50), 1)
             
-            # Filter status indicator
             filter_y = FRAME_HEIGHT - 25
             filter_status = f"Filters: {'ON' if FILTER_ENABLED else 'OFF'}"
             if FILTER_ENABLED:
@@ -711,7 +675,6 @@ class ArucoMQTTSender:
                 filename = f"mqtt_sender_{datetime.now().strftime('%H%M%S')}.png"
                 cv2.imwrite(filename, frame)
                 print(f">>> Screenshot saved: {filename}")
-            # Filter controls
             elif key == ord('f'):
                 self.toggle_filter('all')
             elif key == ord('1'):
@@ -725,7 +688,6 @@ class ArucoMQTTSender:
             elif key == ord('d'):
                 self.toggle_filter('debug')
         
-        # Cleanup
         print("\nShutting down...")
         self.mqtt_client.loop_stop()
         self.mqtt_client.disconnect()

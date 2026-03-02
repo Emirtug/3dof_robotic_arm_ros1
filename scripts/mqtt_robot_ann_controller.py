@@ -3,24 +3,24 @@
 """
 MQTT Robot ANN Controller
 =========================
-TÜBİTAK 2209-B Projesi için ANN Entegreli Robot Kontrolcüsü
+ANN-Integrated Robot Controller for TUBITAK 2209-B Project
 
-Bu controller ANN modülünü kullanarak:
-1. Pozisyon smoothing (titreşim azaltma)
-2. Pozisyon prediction (gecikme telafisi)
-3. Karşılaştırma metrikleri (ANN vs Raw)
+This controller uses the ANN module for:
+1. Position smoothing (vibration reduction)
+2. Position prediction (latency compensation)
+3. Comparison metrics (ANN vs Raw)
 
-Ayrıca motion_recorder ile entegre çalışarak:
-- Hareketleri kaydeder
-- Kaydedilmiş hareketleri oynatır
-- ANN eğitimi için veri toplar
+Also works integrated with motion_recorder:
+- Records motions
+- Plays back recorded motions
+- Collects data for ANN training
 
-Kullanım:
+Usage:
     roslaunch 3dof_rrr_robot_arm gazebo.launch
     rosrun 3dof_rrr_robot_arm mqtt_robot_ann_controller.py
 
-Klavye Kontrolleri:
-    [A] Toggle ANN (On/Off) - Karşılaştırma için
+Keyboard Controls:
+    [A] Toggle ANN (On/Off) - For comparison
     [S] Toggle Smoothing
     [P] Toggle Prediction
     [R] Start/Stop Recording
@@ -30,7 +30,7 @@ Klavye Kontrolleri:
     [L] Soldering effect
     [Q] Quit
 
-Author: Emirtuğ Kacar
+Author: Emirtug Kacar
 Date: 2024
 """
 
@@ -44,14 +44,12 @@ import os
 from collections import deque
 from datetime import datetime
 
-# ROS Messages
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import Point, Pose
 from std_msgs.msg import String, Header
 from gazebo_msgs.srv import SpawnModel, DeleteModel
 
-# MQTT
 try:
     import paho.mqtt.client as mqtt
     MQTT_AVAILABLE = True
@@ -59,7 +57,6 @@ except ImportError:
     MQTT_AVAILABLE = False
     print("[WARN] paho-mqtt not installed")
 
-# Keyboard
 try:
     from pynput import keyboard
     KEYBOARD_AVAILABLE = True
@@ -67,7 +64,6 @@ except ImportError:
     KEYBOARD_AVAILABLE = False
     print("[WARN] pynput not installed")
 
-# TF2 for transforms
 try:
     import tf2_ros
     from tf2_geometry_msgs import PointStamped
@@ -75,7 +71,6 @@ try:
 except ImportError:
     TF_AVAILABLE = False
 
-# ANN Module
 try:
     from ann_motion_predictor import ANNMotionPredictor, TF_AVAILABLE as ANN_TF_AVAILABLE
     ANN_AVAILABLE = True
@@ -85,61 +80,62 @@ except ImportError:
     print("[WARN] ANN module not available")
 
 
+
 # =============================================================================
 # Configuration
 # =============================================================================
 MQTT_BROKER = "test.mosquitto.org"
 MQTT_PORT = 1883
 MQTT_TOPIC_POSITION = "robot/position"
+MQTT_TOPIC_COMMAND = "robot/command"
+MESSAGE_TIMEOUT = 8.0  # Seconds without position → go to safe
 
-# ============ JOINT LIMITS (radians) - URDF ile uyumlu ============
+
+# ============ JOINT LIMITS (radians) - Compatible with URDF ============
 JOINT1_MIN = -2.268  # URDF: -2.268
 JOINT1_MAX = 2.268   # URDF: 2.268
 JOINT2_MIN = 0.0
-JOINT2_MAX = 1.57
+JOINT2_MAX = 2.0
 JOINT3_MIN = 0.0
-JOINT3_MAX = 1.57
+JOINT3_MAX = 2.0
 
 # ============ REFERENCE BASED CONTROL (same as dual_controller) ============
 CENTER_X = 0.0
 CENTER_Y = 0.0
-CENTER_Z = 10.0  # Log'a göre 8-12cm arası çalışıyorsun
+CENTER_Z = 15.0  # According to log, works in 8-12cm range
 
 RANGE_X = 10.0
 RANGE_Y = 8.0
-RANGE_Z = 8.0    # Daha hassas range
+RANGE_Z = 8.0    # More sensitive range
 
 JOINT1_MOVE_LIMIT = 1.2   # URDF limiti 2.268
-JOINT2_MOVE_LIMIT = 0.6   # Aşağı/yukarı hareket
-JOINT3_MOVE_LIMIT = 0.6   # Aşağı/yukarı hareket
+JOINT2_MOVE_LIMIT = 1.0   # Up/down movement (increased)
+JOINT3_MOVE_LIMIT = 1.0   # Up/down movement (increased)
 
 INVERT_X = -1
 INVERT_Y = -1
-INVERT_Z = -1   # DEĞİŞTİRİLDİ - Z arttıkça joint AZALSIN
+INVERT_Z = -1   # CHANGED - As Z increases joint should DECREASE
 
-HOME_POSITION = [0.0, 1.0, 1.0]  # Yukarıdan başla - aşağı inebilsin
+HOME_POSITION = [0.0, 1.0, 1.0]  # Start from top - so it can go down
 SAFE_POSITION = [0.0, 0.5, 0.5]
 
-# Tepki hızı parametreleri (lag azaltma)
-SMOOTHING = 0.35          # Yüksek = hızlı tepki (0.25-0.5 arası)
-CONTROL_RATE = 30         # Daha yüksek rate
-DEADZONE = 0.2            # Düşük = daha hassas
-TRAJECTORY_TIME = 0.08    # Düşük = hızlı hareket
+# Response speed parameters (lag reduction)
+SMOOTHING = 0.15          # Smooth transition (low = less jumping)
+CONTROL_RATE = 30         # Higher rate
+DEADZONE = 0.2            # Low = more sensitive
+TRAJECTORY_TIME = 0.15    # 80ms was too aggressive, 150ms is more stable
 
-# Model directory
 MODEL_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     '..', 'models'
 )
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-# Recording directory
 RECORDING_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     '..', 'recordings'
 )
 
-# Spark SDF for soldering effect
 SPARK_SDF = """<?xml version="1.0"?>
 <sdf version="1.6">
   <model name="solder_spark">
@@ -167,20 +163,16 @@ class PerformanceMetrics:
     def __init__(self, window_size=100):
         self.window_size = window_size
         
-        # Position tracking
         self.raw_positions = deque(maxlen=window_size)
         self.ann_positions = deque(maxlen=window_size)
         self.actual_positions = deque(maxlen=window_size)
         
-        # Latency
         self.raw_latencies = deque(maxlen=window_size)
         self.ann_latencies = deque(maxlen=window_size)
         
-        # Smoothness (jerk)
         self.raw_jerks = deque(maxlen=window_size)
         self.ann_jerks = deque(maxlen=window_size)
         
-        # Timestamps
         self.last_update = time.time()
     
     def add_sample(self, raw_pos, ann_pos, actual_pos, latency_raw=0, latency_ann=0):
@@ -207,16 +199,13 @@ class PerformanceMetrics:
         # Approximate jerk from 4 consecutive positions
         p0, p1, p2, p3 = positions
         
-        # Velocity
         v0 = p1 - p0
         v1 = p2 - p1
         v2 = p3 - p2
         
-        # Acceleration
         a0 = v1 - v0
         a1 = v2 - v1
         
-        # Jerk
         jerk = np.linalg.norm(a1 - a0)
         return jerk
     
@@ -249,7 +238,6 @@ class PerformanceMetrics:
             }
         }
         
-        # Improvement percentages
         if stats['raw']['mean_error'] > 0:
             stats['error_improvement'] = (
                 (stats['raw']['mean_error'] - stats['ann']['mean_error']) / 
@@ -278,55 +266,45 @@ class MQTTRobotANNController:
         """Initialize the controller"""
         rospy.init_node('mqtt_robot_ann_controller', anonymous=True)
         
-        # State
         self.current_position = None
         self.last_raw_position = None
-        self.joint_angles = list(HOME_POSITION)  # Start at home
+        self.joint_angles = [0.0, 0.0, 0.0]  # Start aligned with Gazebo
         self.running = True
         self.message_count = 0
         
-        # Deadzone tracking
         self.last_x = CENTER_X
         self.last_y = CENTER_Y  
         self.last_z = CENTER_Z
         
-        # ANN settings
-        self.ann_enabled = True
-        self.smoothing_enabled = True
-        self.prediction_enabled = True
+        self.last_message_time = time.time()
+        self.timeout_triggered = False
         
-        # ANN module
+        self.ann_enabled = False
+        self.smoothing_enabled = False
+        self.prediction_enabled = False
+        
         self.ann_predictor = None
-        if ANN_AVAILABLE:
-            self.ann_predictor = ANNMotionPredictor(sequence_length=10, prediction_horizon=1)
-            self._load_ann_model()
         
-        # Performance metrics
         self.metrics = PerformanceMetrics()
         
-        # Recording state
         self.is_recording = False
         self.recorded_positions = []
         self.record_start_time = None
         
-        # Playback state
         self.is_playing = False
         self.playback_positions = []
         self.playback_index = 0
         self.playback_thread = None
         
-        # Soldering state
         self.is_soldering = False
         self.spark_spawned = False
         
-        # Publishers
         self.trajectory_pub = rospy.Publisher(
             '/arm_controller/command',
             JointTrajectory,
             queue_size=1
         )
         
-        # Gazebo services for spark
         try:
             rospy.wait_for_service('/gazebo/spawn_sdf_model', timeout=5.0)
             rospy.wait_for_service('/gazebo/delete_model', timeout=5.0)
@@ -337,49 +315,43 @@ class MQTTRobotANNController:
             self.gazebo_available = False
             print("[WARN] Gazebo services not available")
         
-        # MQTT
         self.mqtt_client = None
         self.mqtt_connected = False
         if MQTT_AVAILABLE:
             self._setup_mqtt()
         
-        # Keyboard
         if KEYBOARD_AVAILABLE:
             self._setup_keyboard()
         
-        # Print status
         self._print_status()
     
     def _print_status(self):
         """Print controller status"""
         print("\n" + "=" * 70)
-        print("MQTT Robot ANN Controller")
+        print("MQTT Robot Controller (ANN = OFF, Joint Space)")
         print("=" * 70)
-        print(f"  ANN Module:     {'✓ Loaded' if ANN_AVAILABLE else '✗ Not available'}")
-        print(f"  TensorFlow:     {'✓ Available' if ANN_TF_AVAILABLE else '✗ Using fallback'}")
+        print(f"  ANN Module:     {'✓ Available' if ANN_AVAILABLE else '✗ Not installed'}")
+        print(f"  TensorFlow:     {'✓ Available' if ANN_TF_AVAILABLE else '✗ Fallback mode'}")
         print(f"  MQTT:           {'✓ Connecting' if MQTT_AVAILABLE else '✗ Not available'}")
         print(f"  Gazebo:         {'✓ Connected' if self.gazebo_available else '✗ Not available'}")
+        print("-" * 70)
+        print("  Mode: Reference-based mapping (ANN disabled)")
+        print("  Workflow: [R] Record -> [T] Train -> [A] Enable ANN")
         print("-" * 70)
         print("Controls:")
         print("  [A] ANN On/Off     [S] Smoothing     [P] Prediction")
         print("  [R] Record         [Y] Playback      [T] Train ANN")
         print("  [M] Metrics        [L] Solder        [Q] Quit")
-        print("=" * 70)
-        print(f"\nANN: {'ON' if self.ann_enabled else 'OFF'} | "
-              f"Smooth: {'ON' if self.smoothing_enabled else 'OFF'} | "
-              f"Predict: {'ON' if self.prediction_enabled else 'OFF'}")
-        print("-" * 70 + "\n")
+        print("=" * 70 + "\n")
     
     def _load_ann_model(self):
         """Try to load pre-trained ANN model"""
         if not ANN_AVAILABLE:
             return
         
-        # Look for most recent model
         model_files = [f for f in os.listdir(MODEL_DIR) if f.endswith('_params.json')]
         
         if model_files:
-            # Get most recent
             model_files.sort(reverse=True)
             base_name = model_files[0].replace('_params.json', '')
             model_path = os.path.join(MODEL_DIR, base_name)
@@ -411,19 +383,37 @@ class MQTTRobotANNController:
         if rc == 0:
             self.mqtt_connected = True
             self.mqtt_client.subscribe(MQTT_TOPIC_POSITION)
-            print(f"[MQTT] Connected ✓")
+            self.mqtt_client.subscribe(MQTT_TOPIC_COMMAND)
+            print(f"[MQTT] Connected ✓ (position + command topics)")
     
     def _on_mqtt_disconnect(self, client, userdata, rc):
         self.mqtt_connected = False
         print("[MQTT] Disconnected - Moving to SAFE position!")
         self._go_to_safe_position()
     
+    def _go_to_home_position(self):
+        """Move robot to home position"""
+        print("[HOME] Moving to home position...")
+        target = HOME_POSITION
+        for _ in range(20):
+            for i in range(3):
+                self.joint_angles[i] += (target[i] - self.joint_angles[i]) * 0.2
+            traj = JointTrajectory()
+            traj.header.stamp = rospy.Time.now()
+            traj.joint_names = ['joint1', 'joint2', 'joint3']
+            point = JointTrajectoryPoint()
+            point.positions = list(self.joint_angles)
+            point.time_from_start = rospy.Duration(TRAJECTORY_TIME)
+            traj.points.append(point)
+            self.trajectory_pub.publish(traj)
+            time.sleep(0.05)
+        print("[HOME] Robot at home position")
+
     def _go_to_safe_position(self):
         """Move robot to safe position"""
         print("[SAFE] Moving to safe position...")
         
-        # Gradually move to safe position
-        for _ in range(20):  # 20 steps
+        for _ in range(20):
             self.joint_angles[0] += (SAFE_POSITION[0] - self.joint_angles[0]) * 0.2
             self.joint_angles[1] += (SAFE_POSITION[1] - self.joint_angles[1]) * 0.2
             self.joint_angles[2] += (SAFE_POSITION[2] - self.joint_angles[2]) * 0.2
@@ -443,16 +433,29 @@ class MQTTRobotANNController:
         print("[SAFE] Robot at safe position")
     
     def _on_mqtt_message(self, client, userdata, msg):
-        """Handle incoming MQTT position messages"""
+        """Handle incoming MQTT messages (position + command)"""
         try:
             data = json.loads(msg.payload.decode())
-            
+            topic = msg.topic
+
+            if topic == MQTT_TOPIC_COMMAND:
+                command = data.get('command', '')
+                if command == 'safe':
+                    print("[CMD] Safe position command received")
+                    self._go_to_safe_position()
+                elif command == 'home':
+                    print("[CMD] Home position command received")
+                    self._go_to_home_position()
+                return
+
             if 'x' in data and 'y' in data and 'z' in data:
                 x = data['x']
                 y = data['y']
                 z = data['z']
                 
-                # Deadzone (same as dual_controller)
+                self.last_message_time = time.time()
+                self.timeout_triggered = False
+                
                 if abs(x - self.last_x) < DEADZONE:
                     x = self.last_x
                 if abs(y - self.last_y) < DEADZONE:
@@ -461,57 +464,17 @@ class MQTTRobotANNController:
                     z = self.last_z
                     
                 self.last_x, self.last_y, self.last_z = x, y, z
+                self.current_position = (x, y, z)
                 
-                raw_position = (x, y, z)
-                self.last_raw_position = raw_position
+                self._move_to_position((x, y, z))
                 
-                # Process through ANN if enabled
-                if self.ann_enabled and self.ann_predictor:
-                    start_time = time.time()
-                    
-                    if self.smoothing_enabled and self.prediction_enabled:
-                        smoothed, predicted = self.ann_predictor.smooth_and_predict(raw_position)
-                        processed_position = predicted  # Use prediction
-                    elif self.smoothing_enabled:
-                        processed_position = self.ann_predictor.smooth(raw_position)
-                    elif self.prediction_enabled:
-                        processed_position = self.ann_predictor.predict_next(raw_position)
-                    else:
-                        processed_position = raw_position
-                    
-                    ann_latency = time.time() - start_time
-                    
-                    # Update metrics
-                    self.metrics.add_sample(
-                        raw_position, 
-                        processed_position, 
-                        raw_position,  # actual
-                        latency_ann=ann_latency
-                    )
-                    
-                    self.current_position = processed_position
-                else:
-                    self.current_position = raw_position
-                
-                # Record if active
-                if self.is_recording:
-                    self.recorded_positions.append({
-                        'time': time.time(),
-                        'raw': raw_position,
-                        'processed': self.current_position
-                    })
-                
-                # Move robot
-                self._move_to_position(self.current_position)
-                
-                # Console output (every 20 messages)
                 self.message_count += 1
                 if self.message_count % 20 == 0:
-                    ann_status = "ANN" if self.ann_enabled else "RAW"
+                    mode = "ANN" if self.ann_enabled else "RAW"
                     print(f"[RX] X:{x:.1f} Y:{y:.1f} Z:{z:.1f} -> "
                           f"J1:{math.degrees(self.joint_angles[0]):.0f}° "
                           f"J2:{math.degrees(self.joint_angles[1]):.0f}° "
-                          f"J3:{math.degrees(self.joint_angles[2]):.0f}° [{ann_status}]")
+                          f"J3:{math.degrees(self.joint_angles[2]):.0f}° [{mode}]")
                 
         except Exception as e:
             pass
@@ -552,7 +515,15 @@ class MQTTRobotANNController:
     # =========================================================================
     
     def toggle_ann(self):
-        """Toggle ANN processing on/off"""
+        """Toggle ANN processing on/off (lazy init on first enable)"""
+        if not self.ann_enabled and self.ann_predictor is None:
+            if not ANN_AVAILABLE:
+                print("[WARN] ANN module not available")
+                return
+            self.ann_predictor = ANNMotionPredictor(sequence_length=10, prediction_horizon=1)
+            self._load_ann_model()
+            print("[ANN] Module initialized")
+
         self.ann_enabled = not self.ann_enabled
         status = "ON" if self.ann_enabled else "OFF"
         print(f"\n[ANN] Processing: {status}")
@@ -570,36 +541,47 @@ class MQTTRobotANNController:
         print(f"[ANN] Prediction: {status}")
     
     def train_ann(self):
-        """Train ANN from recorded data"""
+        """Train ANN on joint angle data from recordings"""
         if not ANN_AVAILABLE or not ANN_TF_AVAILABLE:
             print("[WARN] TensorFlow not available for training")
             return
-        
-        # Check for training data
-        export_path = os.path.join(RECORDING_DIR, 'exports', 'all_recordings_training.json')
-        
-        if not os.path.exists(export_path):
-            # Use current recorded positions
-            if len(self.recorded_positions) < 100:
-                print("[WARN] Need at least 100 recorded positions for training")
-                return
-            
-            positions = [p['raw'] for p in self.recorded_positions]
-        else:
-            # Load from file
-            with open(export_path, 'r') as f:
-                data = json.load(f)
-            positions = [(p['x'], p['y'], p['z']) for p in data['positions']]
-        
-        print(f"\n[TRAIN] Training ANN on {len(positions)} positions...")
-        
-        # Train
-        self.ann_predictor.train(positions, epochs=50, verbose=1)
-        
-        # Save model
-        self.ann_predictor.save_model("motion_predictor")
-        
-        print("[TRAIN] Training complete!")
+
+        if self.ann_predictor is None:
+            self.ann_predictor = ANNMotionPredictor(sequence_length=10, prediction_horizon=1)
+
+        joint_data = []
+
+        if self.recorded_positions:
+            for p in self.recorded_positions:
+                if 'raw_joints' in p:
+                    joint_data.append(tuple(p['raw_joints']))
+
+        export_dir = os.path.join(RECORDING_DIR, 'exports')
+        if os.path.exists(export_dir):
+            for fname in sorted(os.listdir(export_dir)):
+                if not fname.startswith('recording_'):
+                    continue
+                filepath = os.path.join(export_dir, fname)
+                try:
+                    with open(filepath, 'r') as f:
+                        data = json.load(f)
+                    if data.get('metadata', {}).get('data_space') == 'joint':
+                        for p in data['positions']:
+                            joint_data.append(tuple(p['joints']))
+                except Exception:
+                    continue
+
+        if len(joint_data) < 100:
+            print(f"[WARN] Need at least 100 samples, have {len(joint_data)}. Record more data with [R].")
+            return
+
+        print(f"\n[TRAIN] Training ANN on {len(joint_data)} joint samples (joint space)...")
+
+        self.ann_predictor.train(joint_data, epochs=50, verbose=1)
+        self.ann_predictor.train_smoothing(joint_data, epochs=30, verbose=1)
+        self.ann_predictor.save_model("joint_predictor")
+
+        print("[TRAIN] Training complete! Enable ANN with [A]")
     
     def show_metrics(self):
         """Show comparison metrics"""
@@ -669,7 +651,6 @@ class MQTTRobotANNController:
         print(f"[REC] Duration: {duration:.2f}s")
         print(f"[REC] Samples: {len(self.recorded_positions)}")
         
-        # Save to file
         if self.recorded_positions:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             export_dir = os.path.join(RECORDING_DIR, 'exports')
@@ -682,14 +663,14 @@ class MQTTRobotANNController:
                     'timestamp': timestamp,
                     'duration': duration,
                     'samples': len(self.recorded_positions),
-                    'ann_enabled': self.ann_enabled
+                    'ann_enabled': self.ann_enabled,
+                    'data_space': 'joint'
                 },
                 'positions': [
                     {
                         'time': p['time'],
-                        'x': p['raw'][0],
-                        'y': p['raw'][1],
-                        'z': p['raw'][2]
+                        'aruco': p['aruco'],
+                        'joints': p['raw_joints']
                     }
                     for p in self.recorded_positions
                 ]
@@ -716,9 +697,8 @@ class MQTTRobotANNController:
             self.start_playback()
     
     def start_playback(self):
-        """Start playback of last recording"""
+        """Start playback of last recording (joint space)"""
         if not self.recorded_positions:
-            # Try to load from file
             export_dir = os.path.join(RECORDING_DIR, 'exports')
             if os.path.exists(export_dir):
                 files = sorted([f for f in os.listdir(export_dir) if f.startswith('recording_')])
@@ -726,13 +706,13 @@ class MQTTRobotANNController:
                     filepath = os.path.join(export_dir, files[-1])
                     with open(filepath, 'r') as f:
                         data = json.load(f)
-                    self.playback_positions = [
-                        (p['x'], p['y'], p['z'])
-                        for p in data['positions']
-                    ]
+                    if data.get('metadata', {}).get('data_space') == 'joint':
+                        self.playback_positions = [tuple(p['joints']) for p in data['positions']]
+                    else:
+                        self.playback_positions = [(p['x'], p['y'], p['z']) for p in data['positions']]
                     print(f"[PLAY] Loaded: {files[-1]}")
         else:
-            self.playback_positions = [p['raw'] for p in self.recorded_positions]
+            self.playback_positions = [tuple(p['raw_joints']) for p in self.recorded_positions]
         
         if not self.playback_positions:
             print("[WARN] No recording to play")
@@ -748,21 +728,30 @@ class MQTTRobotANNController:
         self.playback_thread.start()
     
     def _playback_loop(self):
-        """Playback thread"""
+        """Playback thread - directly publishes joint angles"""
         rate = 30  # Hz
         interval = 1.0 / rate
         
         while self.is_playing and self.playback_index < len(self.playback_positions):
-            position = self.playback_positions[self.playback_index]
-            
-            # Process through ANN if enabled
+            target_joints = list(self.playback_positions[self.playback_index])
+
             if self.ann_enabled and self.ann_predictor:
                 if self.smoothing_enabled:
-                    position = self.ann_predictor.smooth(position)
+                    target_joints = list(self.ann_predictor.smooth(tuple(target_joints)))
                 if self.prediction_enabled:
-                    position = self.ann_predictor.predict_next()
-            
-            self._move_to_position(position)
+                    target_joints = list(self.ann_predictor.predict_next())
+
+            for i in range(3):
+                self.joint_angles[i] += (target_joints[i] - self.joint_angles[i]) * SMOOTHING
+
+            traj = JointTrajectory()
+            traj.header.stamp = rospy.Time.now()
+            traj.joint_names = ['joint1', 'joint2', 'joint3']
+            point = JointTrajectoryPoint()
+            point.positions = list(self.joint_angles)
+            point.time_from_start = rospy.Duration(TRAJECTORY_TIME)
+            traj.points.append(point)
+            self.trajectory_pub.publish(traj)
             
             self.playback_index += 1
             time.sleep(interval)
@@ -786,50 +775,65 @@ class MQTTRobotANNController:
     # Robot Control
     # =========================================================================
     
-    def _move_to_position(self, position):
-        """Move robot to position using reference-based mapping (same as dual_controller)"""
+    def _reference_mapping(self, position):
+        """ArUco x,y,z (cm) -> raw joint angles (rad) via reference-based mapping"""
         x, y, z = position
-        
-        # Reference based mapping (dual_controller ile aynı)
+
         offset_x = x - CENTER_X
         offset_y = y - CENTER_Y
         offset_z = z - CENTER_Z
-        
-        # Normalize to -1..1
-        norm_x = max(-1.0, min(1.0, offset_x / RANGE_X))
-        norm_y = max(-1.0, min(1.0, offset_y / RANGE_Y))
-        norm_z = max(-1.0, min(1.0, offset_z / RANGE_Z))
-        
-        # Apply inversion
-        norm_x *= INVERT_X
-        norm_y *= INVERT_Y
-        norm_z *= INVERT_Z
-        
-        # Map to joint angles
-        joint1 = HOME_POSITION[0] + norm_x * JOINT1_MOVE_LIMIT
-        joint2 = HOME_POSITION[1] + norm_z * JOINT2_MOVE_LIMIT
-        joint3 = HOME_POSITION[2] + norm_y * JOINT3_MOVE_LIMIT
-        
-        # Apply joint limits
-        joint1 = max(JOINT1_MIN, min(JOINT1_MAX, joint1))
-        joint2 = max(JOINT2_MIN, min(JOINT2_MAX, joint2))
-        joint3 = max(JOINT3_MIN, min(JOINT3_MAX, joint3))
-        
-        # Smoothing
-        self.joint_angles[0] += (joint1 - self.joint_angles[0]) * SMOOTHING
-        self.joint_angles[1] += (joint2 - self.joint_angles[1]) * SMOOTHING
-        self.joint_angles[2] += (joint3 - self.joint_angles[2]) * SMOOTHING
-        
-        # Publish trajectory
+
+        norm_x = max(-1.0, min(1.0, offset_x / RANGE_X)) * INVERT_X
+        norm_y = max(-1.0, min(1.0, offset_y / RANGE_Y)) * INVERT_Y
+        norm_z = max(-1.0, min(1.0, offset_z / RANGE_Z)) * INVERT_Z
+
+        joint1 = max(JOINT1_MIN, min(JOINT1_MAX, HOME_POSITION[0] + norm_x * JOINT1_MOVE_LIMIT))
+        joint2 = max(JOINT2_MIN, min(JOINT2_MAX, HOME_POSITION[1] + norm_z * JOINT2_MOVE_LIMIT))
+        joint3 = max(JOINT3_MIN, min(JOINT3_MAX, HOME_POSITION[2] + norm_z * JOINT3_MOVE_LIMIT))
+
+        return [joint1, joint2, joint3]
+
+    def _move_to_position(self, position):
+        """Full pipeline: reference mapping -> ANN (joint space) -> smoothing -> publish"""
+        raw_joints = self._reference_mapping(position)
+
+        if self.ann_enabled and self.ann_predictor:
+            start_time = time.time()
+            raw_tuple = tuple(raw_joints)
+
+            if self.smoothing_enabled and self.prediction_enabled:
+                smoothed, predicted = self.ann_predictor.smooth_and_predict(raw_tuple)
+                target_joints = list(predicted)
+            elif self.smoothing_enabled:
+                target_joints = list(self.ann_predictor.smooth(raw_tuple))
+            elif self.prediction_enabled:
+                target_joints = list(self.ann_predictor.predict_next(raw_tuple))
+            else:
+                target_joints = raw_joints
+
+            ann_latency = time.time() - start_time
+            self.metrics.add_sample(raw_joints, target_joints, raw_joints, latency_ann=ann_latency)
+        else:
+            target_joints = raw_joints
+
+        if self.is_recording:
+            self.recorded_positions.append({
+                'time': time.time(),
+                'aruco': list(position),
+                'raw_joints': list(raw_joints),
+                'target_joints': list(target_joints)
+            })
+
+        for i in range(3):
+            self.joint_angles[i] += (target_joints[i] - self.joint_angles[i]) * SMOOTHING
+
         traj = JointTrajectory()
         traj.header.stamp = rospy.Time.now()
         traj.joint_names = ['joint1', 'joint2', 'joint3']
-        
         point = JointTrajectoryPoint()
-        point.positions = self.joint_angles
+        point.positions = list(self.joint_angles)
         point.time_from_start = rospy.Duration(TRAJECTORY_TIME)
         traj.points.append(point)
-        
         self.trajectory_pub.publish(traj)
     
     # =========================================================================
@@ -842,7 +846,6 @@ class MQTTRobotANNController:
         
         if self.is_soldering:
             print("[SOLDER] Soldering ON")
-            # Spawn single spark
             self._spawn_spark()
         else:
             print("[SOLDER] Soldering OFF")
@@ -853,7 +856,6 @@ class MQTTRobotANNController:
         if not self.gazebo_available:
             return
         
-        # Delete old spark if exists
         if self.spark_spawned:
             self._delete_spark()
         
@@ -891,7 +893,6 @@ class MQTTRobotANNController:
             self.spark_spawned = False
             print("[SOLDER] Spark removed")
         except Exception as e:
-            # Spark may already be deleted
             self.spark_spawned = False
     
     # =========================================================================
@@ -913,7 +914,6 @@ class MQTTRobotANNController:
             self.is_soldering = False
             self._delete_spark()
         
-        # Go to safe position before shutdown
         self._go_to_safe_position()
         
         if self.mqtt_client:
@@ -923,11 +923,18 @@ class MQTTRobotANNController:
         rospy.signal_shutdown("User shutdown")
     
     def run(self):
-        """Main loop"""
+        """Main loop with message timeout check"""
         rate = rospy.Rate(10)
         
         try:
             while not rospy.is_shutdown() and self.running:
+                if self.mqtt_connected and not self.timeout_triggered:
+                    elapsed = time.time() - self.last_message_time
+                    if elapsed >= MESSAGE_TIMEOUT:
+                        print(f"\n[TIMEOUT] No position data for {MESSAGE_TIMEOUT}s - moving to SAFE")
+                        self.timeout_triggered = True
+                        self._go_to_safe_position()
+                
                 rate.sleep()
         except KeyboardInterrupt:
             self.shutdown()

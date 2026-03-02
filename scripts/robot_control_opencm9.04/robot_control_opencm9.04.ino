@@ -69,27 +69,30 @@ const uint8_t ESTOP_PIN = 23;  // Active LOW
 // Status LED (built-in on OpenCM9.04)
 const uint8_t LED_PIN = 14;  // User LED
 
-// ============ JOINT LIMITS (radians) ============
-const float JOINT1_MIN = -3.14159;
-const float JOINT1_MAX = 3.14159;
+// ============ JOINT LIMITS (radians) - matching URDF ============
+const float JOINT1_MIN = -2.268;
+const float JOINT1_MAX = 2.268;
 const float JOINT2_MIN = 0.0;
-const float JOINT2_MAX = 1.5708;
+const float JOINT2_MAX = 2.0;
 const float JOINT3_MIN = 0.0;
-const float JOINT3_MAX = 1.5708;
+const float JOINT3_MAX = 2.0;
 
 // ============ AX-12A SETTINGS ============
+// AX-12A: 0-1023 over 0°-300°, center=512 (150°)
+// 300° = 5.2360 rad, so 1 rad = 195.38 steps
 const int AX12_MIN = 0;
 const int AX12_MAX = 1023;
 const int AX12_CENTER = 512;
+const float STEPS_PER_RAD = 195.38;
 
-// ============ HOME/SAFE POSITIONS (radians) ============
+// ============ HOME/SAFE POSITIONS (radians) - matching Python controller ============
 const float HOME_J1 = 0.0;
-const float HOME_J2 = 0.5;
-const float HOME_J3 = 0.5;
+const float HOME_J2 = 1.0;
+const float HOME_J3 = 1.0;
 
 const float SAFE_J1 = 0.0;
-const float SAFE_J2 = 0.3;
-const float SAFE_J3 = 0.3;
+const float SAFE_J2 = 0.5;
+const float SAFE_J3 = 0.5;
 
 // ============ GLOBAL VARIABLES ============
 Dynamixel2Arduino dxl(DXL_SERIAL, DXL_DIR_PIN);
@@ -138,7 +141,6 @@ void statusReport();
 
 // ============ SETUP ============
 void setup() {
-  // Debug serial (USB)
   DEBUG_SERIAL.begin(115200);
   while (!DEBUG_SERIAL && millis() < 3000);
   
@@ -147,18 +149,14 @@ void setup() {
   DEBUG_SERIAL.println("  WITH SAFETY FEATURES");
   DEBUG_SERIAL.println("============================================");
   
-  // Setup pins
   pinMode(LED_PIN, OUTPUT);
-  pinMode(ESTOP_PIN, INPUT_PULLUP);  // E-STOP with pull-up
+  pinMode(ESTOP_PIN, INPUT_PULLUP);
   
-  // Blink LED to indicate startup
   blinkLED(3, 200);
   
-  // Dynamixel serial
   dxl.begin(1000000);
   dxl.setPortProtocolVersion(DXL_PROTOCOL_VERSION);
   
-  // Initialize servos (but don't enable torque yet)
   initServos();
   
   DEBUG_SERIAL.println("[OK] Waiting for connection...");
@@ -171,7 +169,6 @@ void setup() {
 
 // ============ MAIN LOOP ============
 void loop() {
-  // Check hardware E-STOP button
   checkHardwareESTOP();
   
   // If emergency stopped, just blink LED and wait
@@ -181,15 +178,13 @@ void loop() {
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));
       last_blink = millis();
     }
-    processSerialData();  // Still process commands for reset
+    processSerialData();
     delay(10);
     return;
   }
   
-  // Process incoming serial data
   processSerialData();
   
-  // Periodic safety checks
   if (millis() - last_voltage_check > VOLTAGE_CHECK_INTERVAL) {
     checkVoltage();
     last_voltage_check = millis();
@@ -200,9 +195,7 @@ void loop() {
     last_temp_check = millis();
   }
   
-  // Watchdog - check for communication timeout
   if (control_enabled && torque_enabled) {
-    // Check heartbeat timeout
     if (millis() - last_heartbeat_time > HEARTBEAT_TIMEOUT) {
       if (!watchdog_triggered) {
         DEBUG_SERIAL.println("[WARN] Heartbeat timeout - going to safe");
@@ -211,7 +204,6 @@ void loop() {
       }
     }
     
-    // Check data timeout
     if (millis() - last_data_time > WATCHDOG_TIMEOUT) {
       if (!watchdog_triggered) {
         DEBUG_SERIAL.println("[WARN] Watchdog: No data - going to safe");
@@ -221,18 +213,16 @@ void loop() {
     }
   }
   
-  // LED status indicator
   if (control_enabled && !watchdog_triggered) {
-    digitalWrite(LED_PIN, HIGH);  // Solid = running
+    digitalWrite(LED_PIN, HIGH);
   } else if (watchdog_triggered) {
-    // Slow blink = watchdog triggered
     static unsigned long last_blink = 0;
     if (millis() - last_blink > 500) {
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));
       last_blink = millis();
     }
   } else {
-    digitalWrite(LED_PIN, LOW);  // Off = not running
+    digitalWrite(LED_PIN, LOW);
   }
   
   delay(10);
@@ -250,7 +240,6 @@ void processSerialData() {
         } else if (input_buffer.startsWith("C:")) {
           parseControlCommand(input_buffer.substring(2));
         } else if (input_buffer.startsWith("H:")) {
-          // Heartbeat received
           last_heartbeat_time = millis();
         } else if (input_buffer == "?") {
           statusReport();
@@ -287,17 +276,14 @@ void parseJointCommand(String data) {
   float j2 = data.substring(comma1 + 1, comma2).toFloat();
   float j3 = data.substring(comma2 + 1).toFloat();
   
-  // Clamp to limits
   target_j1 = constrain(j1, JOINT1_MIN, JOINT1_MAX);
   target_j2 = constrain(j2, JOINT2_MIN, JOINT2_MAX);
   target_j3 = constrain(j3, JOINT3_MIN, JOINT3_MAX);
   
-  // Update timing
   last_data_time = millis();
-  last_heartbeat_time = millis();  // Joint data counts as heartbeat
+  last_heartbeat_time = millis();
   watchdog_triggered = false;
   
-  // Move servos if enabled
   if (control_enabled && torque_enabled) {
     moveServos();
   }
@@ -331,10 +317,9 @@ void parseControlCommand(String data) {
       last_data_time = millis();
       last_heartbeat_time = millis();
       
-      // Enable torque and do soft start
       if (!torque_enabled) {
         enableTorque();
-        goHome();  // Soft start to home
+        goHome();
       }
     }
     
@@ -373,14 +358,11 @@ void initServos() {
       DEBUG_SERIAL.print(names[i]);
       DEBUG_SERIAL.println(")");
       
-      // Configure servo
       dxl.torqueOff(ids[i]);
       dxl.setOperatingMode(ids[i], OP_POSITION);
       
-      // Set torque limit for safety
       dxl.writeControlTableItem(TORQUE_LIMIT, ids[i], TORQUE_LIMIT);
       
-      // Set slow speed initially
       dxl.writeControlTableItem(MOVING_SPEED, ids[i], SERVO_SPEED_SLOW);
       
       found_count++;
@@ -406,7 +388,7 @@ void enableTorque() {
     return;
   }
   
-  DEBUG_SERIAL.println("[SAFETY] Enabling torque with slow speed...");
+  DEBUG_SERIAL.println("[SAFETY] Enabling torque...");
   
   uint8_t ids[] = {SERVO_ID_1, SERVO_ID_2, SERVO_ID_3};
   for (int i = 0; i < 3; i++) {
@@ -417,7 +399,6 @@ void enableTorque() {
   torque_enabled = true;
   delay(100);
   
-  // Switch to normal speed after a moment
   delay(500);
   for (int i = 0; i < 3; i++) {
     dxl.writeControlTableItem(MOVING_SPEED, ids[i], SERVO_SPEED_NORMAL);
@@ -439,14 +420,13 @@ void disableTorque() {
 void moveServos() {
   if (!torque_enabled) return;
   
-  // Convert radians to AX-12A positions
-  int pos1 = AX12_CENTER + (int)(target_j1 / 3.14159 * (AX12_MAX - AX12_CENTER));
+  int pos1 = AX12_CENTER + (int)(target_j1 * STEPS_PER_RAD);
   pos1 = constrain(pos1, AX12_MIN, AX12_MAX);
   
-  int pos2 = AX12_CENTER + (int)(target_j2 / 1.5708 * 170);
+  int pos2 = AX12_CENTER + (int)(target_j2 * STEPS_PER_RAD);
   pos2 = constrain(pos2, AX12_MIN, AX12_MAX);
   
-  int pos3 = AX12_CENTER + (int)(target_j3 / 1.5708 * 170);
+  int pos3 = AX12_CENTER + (int)(target_j3 * STEPS_PER_RAD);
   pos3 = constrain(pos3, AX12_MIN, AX12_MAX);
   
   dxl.setGoalPosition(SERVO_ID_1, pos1);
@@ -455,16 +435,14 @@ void moveServos() {
 }
 
 void moveServosSlowly() {
-  // Temporarily set slow speed
   uint8_t ids[] = {SERVO_ID_1, SERVO_ID_2, SERVO_ID_3};
   for (int i = 0; i < 3; i++) {
     dxl.writeControlTableItem(MOVING_SPEED, ids[i], SERVO_SPEED_SLOW);
   }
   
   moveServos();
-  delay(500);  // Wait for movement
+  delay(500);
   
-  // Restore normal speed if not in safe mode
   if (control_enabled && !watchdog_triggered) {
     for (int i = 0; i < 3; i++) {
       dxl.writeControlTableItem(MOVING_SPEED, ids[i], SERVO_SPEED_NORMAL);
@@ -496,7 +474,6 @@ void goSafe() {
   target_j2 = SAFE_J2;
   target_j3 = SAFE_J3;
   
-  // Use slow speed for safe movement
   uint8_t ids[] = {SERVO_ID_1, SERVO_ID_2, SERVO_ID_3};
   for (int i = 0; i < 3; i++) {
     dxl.writeControlTableItem(MOVING_SPEED, ids[i], SERVO_SPEED_SLOW);
@@ -520,7 +497,6 @@ void triggerEmergencyStop(const char* reason) {
   DEBUG_SERIAL.println(reason);
   DEBUG_SERIAL.println("==========================================");
   
-  // Immediately disable torque for safety
   disableTorque();
   
   DEBUG_SERIAL.println("[ESTOP] Send 'C:reset' to resume");
@@ -532,7 +508,6 @@ void resetEmergencyStop() {
     return;
   }
   
-  // Check if hardware E-STOP is released
   if (digitalRead(ESTOP_PIN) == LOW) {
     DEBUG_SERIAL.println("[ERR] Release hardware E-STOP button first!");
     return;
@@ -543,14 +518,12 @@ void resetEmergencyStop() {
   voltage_error_count = 0;
   temp_warning_count = 0;
   
-  // Don't auto-enable - wait for explicit start command
   DEBUG_SERIAL.println("[INFO] Send 'C:start' to resume control");
 }
 
 void checkVoltage() {
   if (!servos_initialized) return;
   
-  // Read voltage from first servo (all should be same)
   float voltage = dxl.readControlTableItem(PRESENT_VOLTAGE, SERVO_ID_1) / 10.0;
   
   if (voltage < VOLTAGE_MIN) {
@@ -572,7 +545,7 @@ void checkVoltage() {
       triggerEmergencyStop("High voltage detected");
     }
   } else {
-    voltage_error_count = 0;  // Reset counter on good reading
+    voltage_error_count = 0;
   }
 }
 
@@ -600,7 +573,6 @@ void checkTemperature() {
 }
 
 void checkHardwareESTOP() {
-  // E-STOP button is active LOW
   if (digitalRead(ESTOP_PIN) == LOW) {
     if (!emergency_stop) {
       triggerEmergencyStop("Hardware E-STOP pressed");
